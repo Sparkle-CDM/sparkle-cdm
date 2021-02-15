@@ -7,5 +7,7 @@ EME and MSE.
 By itself the project doesn't support any specific DRM system, it just loads
 plugins and forwards OpenCDM calls to the selected plugin at runtime.
 
-A mock plugin is provided, it is useful only for testing purposes. It can be
-used as a skeleton for new plugins though.
+A mock plugin is provided, it is useful only for testing purposes. It
+can be used as a skeleton for new plugins though. It is necessary to
+remind that to use any DRM system, you should observe its license and
+have permission from the provider.
