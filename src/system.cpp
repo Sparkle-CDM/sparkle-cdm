@@ -31,13 +31,13 @@
 #include <gmodule.h>
 #include <gst/gst.h>
 
-#include <mutex>
-
 #include "open_cdm_adapter.h"
 #include "sparkle-cdm-config.h"
 
 GST_DEBUG_CATEGORY(sparkle_cdm_debug_category);
 #define GST_CAT_DEFAULT sparkle_cdm_debug_category
+
+#define UNUSED_PARAM(x) (void)x
 
 namespace {
 
@@ -64,30 +64,31 @@ static void registerModule(const gchar* path)
         GST_WARNING("Error loading %s: %s", path, g_module_error());
 }
 
-static void initCheck()
+static const gchar* initCheck()
 {
-    static std::once_flag onceFlag;
-    call_once(onceFlag, [] {
-        GST_DEBUG_CATEGORY_INIT(sparkle_cdm_debug_category, "sprklcdm", 0,
-            "Sparkle CDM");
-        const char* path = g_getenv("WEBKIT_SPARKLE_CDM_MODULE_PATH");
-        if (path)
-            registerModule(path);
+    g_autoptr(GError) error = nullptr;
+    if (!gst_init_check(nullptr, nullptr, &error)) {
+        return error ? error->message : "Initialization failed";
+    }
+    GST_DEBUG_CATEGORY_INIT(sparkle_cdm_debug_category, "sprklcdm", 0,
+        "Sparkle CDM");
+    const char* path = g_getenv("WEBKIT_SPARKLE_CDM_MODULE_PATH");
+    if (path)
+        registerModule(path);
 
-        GDir* plugins_dir = g_dir_open(EXTERNAL_MODULE_PATH, 0, NULL);
-        if (plugins_dir) {
-            GST_DEBUG("Loading plugins from %s", EXTERNAL_MODULE_PATH);
-            const gchar* filename = g_dir_read_name(plugins_dir);
-            while (filename != nullptr) {
-                g_autofree gchar* path = g_build_filename(EXTERNAL_MODULE_PATH, filename, nullptr);
-                if (!g_file_test(path, G_FILE_TEST_IS_DIR))
-                    registerModule(path);
-                filename = g_dir_read_name(plugins_dir);
-            }
-            g_dir_close(plugins_dir);
+    GDir* plugins_dir = g_dir_open(EXTERNAL_MODULE_PATH, 0, NULL);
+    if (plugins_dir) {
+        GST_DEBUG("Loading plugins from %s", EXTERNAL_MODULE_PATH);
+        const gchar* filename = g_dir_read_name(plugins_dir);
+        while (filename != nullptr) {
+            g_autofree gchar* path = g_build_filename(EXTERNAL_MODULE_PATH, filename, nullptr);
+            if (!g_file_test(path, G_FILE_TEST_IS_DIR))
+                registerModule(path);
+            filename = g_dir_read_name(plugins_dir);
         }
-        atexit(closePlugins);
-    });
+        g_dir_close(plugins_dir);
+    }
+    return nullptr;
 }
 
 void cacheKeySystemCheck(GModule* module, const char* keySystem)
@@ -156,6 +157,20 @@ void unregisterSession(struct OpenCDMSession* session)
 
 } // namespace
 
+extern "C" {
+G_MODULE_EXPORT const gchar* g_module_check_init(GModule* self)
+{
+    UNUSED_PARAM(self);
+    return initCheck();
+}
+
+G_MODULE_EXPORT void g_module_unload(GModule* self)
+{
+    UNUSED_PARAM(self);
+    closePlugins();
+}
+}
+
 typedef OpenCDMError (*IsTypeSupportedFunc)(const char* keySystem,
     const char* mimeType);
 typedef struct OpenCDMSystem* (*CreateSystemFunc)(const char* keySystem);
@@ -195,7 +210,6 @@ typedef OpenCDMError (*DecryptSessionFunc)(struct OpenCDMSession* session,
 OpenCDMError opencdm_is_type_supported(const char keySystem[],
     const char mimeType[])
 {
-    initCheck();
     GST_DEBUG("is_type_supported: %s -- %s", keySystem, mimeType);
     OpenCDMError result = ERROR_FAIL;
     IsTypeSupportedFunc is_type_supported;
