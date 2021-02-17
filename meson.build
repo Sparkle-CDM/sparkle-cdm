@@ -9,7 +9,7 @@ project('sparkle-cdm', 'cpp',
 
 config_h = configuration_data()
 config_h.set_quoted('PACKAGE_VERSION', meson.project_version())
-config_h.set_quoted('EXTERNAL_MODULE_PATH', get_option('prefix') / get_option('libexecdir') / 'sparkle-cdm')
+config_h.set_quoted('EXTERNAL_MODULE_PATH', get_option('prefix') / get_option('libdir') / 'sparkle-cdm')
 
 configure_file(output: 'sparkle-cdm-config.h',
         configuration: config_h)
