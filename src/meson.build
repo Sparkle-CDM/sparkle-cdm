@@ -10,7 +10,8 @@ sparkle_cdm_sources = [
 ]
 
 sparkle_cdm_headers = [
-  'open_cdm.h'
+  'open_cdm.h',
+  'open_cdm_adapter.h'
 ]
 
 sparkle_cdm_deps = [
