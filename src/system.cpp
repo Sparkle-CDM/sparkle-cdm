@@ -419,10 +419,10 @@ OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session,
     GstBuffer* IV, GstBuffer* keyID,
     uint32_t initWithLast15)
 {
-    GST_DEBUG("opencdm_session_decrypt: %p", session);
+    GST_DEBUG("opencdm_gstreamer_session_decrypt: %p", session);
     auto* module = moduleForSession(session);
     DecryptSessionFunc decrypt_session;
-    if (!g_module_symbol(module, "opencdm_session_decrypt",
+    if (!g_module_symbol(module, "opencdm_gstreamer_session_decrypt",
             (gpointer*)&decrypt_session))
         return ERROR_FAIL;
 
