@@ -66,10 +66,12 @@ static void registerModule(const gchar* path)
 
 static const gchar* initCheck()
 {
+  if (!gst_is_initialized()) {
     g_autoptr(GError) error = nullptr;
     if (!gst_init_check(nullptr, nullptr, &error)) {
         return error ? error->message : "Initialization failed";
     }
+  }
     GST_DEBUG_CATEGORY_INIT(sparkle_cdm_debug_category, "sprklcdm", 0,
         "Sparkle CDM");
     const char* path = g_getenv("WEBKIT_SPARKLE_CDM_MODULE_PATH");

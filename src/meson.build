@@ -36,3 +36,7 @@ pkg.generate(sparkle_cdm_lib,
       subdirs: 'thunder',
      requires: 'glib-2.0',
 )
+
+sparkle_cdm_dep = declare_dependency(link_with: sparkle_cdm_lib)
+
+subdir('gst')

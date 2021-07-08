@@ -1,0 +1,2 @@
+
+option('sample-player', type : 'feature', value : 'auto', description : 'Build sample player')
