@@ -425,11 +425,12 @@ transformInPlace (GstBaseTransform * base, GstBuffer * buffer)
         mediaType, inputCaps);
     GST_ERROR_OBJECT (self, "Decryption failed");
     return GST_FLOW_NOT_SUPPORTED;
-  } else {
-    /* *INDENT-OFF* */
-    gst_buffer_remove_meta (buffer, reinterpret_cast<GstMeta*>(protectionMeta));
-    gst_buffer_remove_meta (buffer, reinterpret_cast<GstMeta*>(capsMeta));
-    /* *INDENT-ON* */
+  }
+
+  /* *INDENT-OFF* */
+  gst_buffer_remove_meta (buffer, reinterpret_cast<GstMeta*>(protectionMeta));
+  gst_buffer_remove_meta (buffer, reinterpret_cast<GstMeta*>(capsMeta));
+  /* *INDENT-ON* */
   }
   return GST_FLOW_OK;
 }
