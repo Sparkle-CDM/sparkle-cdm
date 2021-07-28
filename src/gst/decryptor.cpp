@@ -29,6 +29,50 @@
 
 #define WIDEVINE_UUID "edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"
 
+/**
+ *
+ * This decryptor is meant to be used in non-web-browser applications. The
+ * use-case is currently limited to:
+ * - DASH
+ * - Audio only (Flac, Opus, AAC)
+ * - Widevine
+ *
+ * Media players relying on playbin should be able to make use of this
+ * decryptor, that would be automatically plugged internally as required,
+ * whenever an encrypted data stream has been detected by demuxers.
+ *
+ * The application is expected to synchronously handle GstMessages sent by the
+ * decryptor. The workflow is the following:
+ *
+ * 0. Application should listen on the bus for synchronous `need-context`
+ * messages asking for `drm-preferred-decryption-system-id` context types. For
+ * now as we support only Widevine, the corresponding UUID should be set on the
+ * `decryption-system-id` field of the context structure.
+ *
+ * 1. (optional) Parse custom ContentProtection payload that might be included
+ * in the manifest. This payload is included in the `spkl-protection` structure
+ * which has 2 fields: `payload` (GstBuffer) and `origin` (string, example:
+ * `dash/mpd`). This can be useful for manifests that include license server
+ * URLs in the ContentProtection XML, for instance. The decryptor already keeps
+ * track of the init data (PSSH), so applications do not need to handle this
+ * part.
+ *
+ * 2. Once the decryptor has received a license challenge from the underlying
+ * CDM, it emits a `spkl-challenge` message, which the application needs to
+ * forward to the license server. The message structure embeds the data in a
+ * `challenge` GstBuffer. Application developer should refer to the
+ * content-provider documentation regarding the challenge submission process.
+ * For DASH this is often handled with a POST HTTPs request.
+ *
+ * 3. Once the license server has provided a response to the challenge request,
+ * this response needs to be sent to the decryptor, using a custom downstream
+ * OOB event that includes a `spkl-session-update` structure containing one
+ * `message` GstBuffer field that represents the unprocessed response.
+ *
+ * An example player is provided, see examples/sample-player.c.
+ *
+ */
+
 GST_DEBUG_CATEGORY_STATIC (spkl_decryptor_debug_category);
 #define GST_CAT_DEFAULT spkl_decryptor_debug_category
 
@@ -591,8 +635,8 @@ spkl_decryptor_class_init (SparkleDecryptorClass * klass)
   elementClass->change_state = GST_DEBUG_FUNCPTR (changeState);
 
   gst_element_class_set_static_metadata (elementClass,
-      "Decrypt content encrypted using Widevine encryption",
+      "Decrypt content using the Sparkle-CDM framework",
       GST_ELEMENT_FACTORY_KLASS_DECRYPTOR,
-      "Decrypts media that has been encrypted using Widevine encryption",
+      "Decrypts media using Sparkle-CDM",
       "Sparkle-CDM Developers");
 }
