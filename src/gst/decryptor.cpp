@@ -248,8 +248,7 @@ spkl_decryptor_init (SparkleDecryptor * self)
   self->markupParser.error = markupError;
   self->markupParseContext =
       g_markup_parse_context_new (&self->markupParser, (GMarkupParseFlags) 0,
-      gst_object_ref (GST_OBJECT_CAST (self)),
-      (GDestroyNotify) gst_object_unref);
+      self, NULL);
   self->parsingPssh = FALSE;
 
   self->currentSrcCaps = nullptr;
