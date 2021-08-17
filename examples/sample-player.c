@@ -40,16 +40,35 @@ static GstBus *bus1;
 #define URI "https://media.axprod.net/TestVectors/v7-MultiDRM-SingleKey/Manifest_AudioOnly.mpd"
 #define TOKEN "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2ZXJzaW9uIjoxLCJjb21fa2V5X2lkIjoiYjMzNjRlYjUtNTFmNi00YWUzLThjOTgtMzNjZWQ1ZTMxYzc4IiwibWVzc2FnZSI6eyJ0eXBlIjoiZW50aXRsZW1lbnRfbWVzc2FnZSIsImtleXMiOlt7ImlkIjoiOWViNDA1MGQtZTQ0Yi00ODAyLTkzMmUtMjdkNzUwODNlMjY2IiwiZW5jcnlwdGVkX2tleSI6ImxLM09qSExZVzI0Y3Iya3RSNzRmbnc9PSJ9XX19.4lWwW46k-oWcah8oN18LPj5OLS5ZU-_AQv7fe0JhNjA"
 
+typedef struct _AppData
+{
+  SoupSession *soupSession;
+} AppData;
+
+static void
+app_data_free (gpointer data)
+{
+  AppData *app_data = (AppData *) data;
+  if (app_data->soupSession)
+    g_object_unref (app_data->soupSession);
+  g_free (data);
+}
+
+static SoupCookie *
+create_dummy_cookie ()
+{
+  SoupCookie *cookie =
+      soup_cookie_new ("foo", "bar", "media.axprod.net", "", -1);
+  soup_cookie_set_secure (cookie, TRUE);
+  soup_cookie_set_same_site_policy (cookie, SOUP_SAME_SITE_POLICY_NONE);
+  soup_cookie_set_http_only (cookie, TRUE);
+  return cookie;
+}
+
 static GstBuffer *
-processChallenge (GstBuffer * challenge)
+processChallenge (GstBuffer * challenge, AppData * app_data)
 {
   GstMapInfo info = GST_MAP_INFO_INIT;
-  g_autoptr (SoupSession) session =
-      (SoupSession *) g_object_new (SOUP_TYPE_SESSION, NULL);
-  if (g_getenv ("SOUP_DEBUG")) {
-    g_autoptr (SoupLogger) logger = soup_logger_new (SOUP_LOGGER_LOG_BODY, -1);
-    soup_session_add_feature (session, SOUP_SESSION_FEATURE (logger));
-  }
 
   g_autoptr (SoupMessage) soup_msg = soup_message_new ("POST", LICENSE_SERVER);
   gst_buffer_map (challenge, &info, GST_MAP_READ);
@@ -59,7 +78,7 @@ processChallenge (GstBuffer * challenge)
   soup_message_headers_append (soup_msg->request_headers,
       "X-AxDRM-Message", TOKEN);
 
-  soup_session_send_message (session, soup_msg);
+  soup_session_send_message (app_data->soupSession, soup_msg);
   if (SOUP_STATUS_IS_SUCCESSFUL (soup_msg->status_code)) {
     GBytes *result = g_bytes_new (soup_msg->response_body->data,
         soup_msg->response_body->length);
@@ -72,9 +91,9 @@ processChallenge (GstBuffer * challenge)
 }
 
 static void
-_bus_watch (G_GNUC_UNUSED GstBus * bus, GstMessage * msg,
-    G_GNUC_UNUSED gpointer userData)
+_bus_watch (G_GNUC_UNUSED GstBus * bus, GstMessage * msg, gpointer user_data)
 {
+  AppData *app_data = (AppData *) user_data;
   switch (GST_MESSAGE_TYPE (msg)) {
     case GST_MESSAGE_STATE_CHANGED:
       if (GST_ELEMENT (msg->src) == pipeline) {
@@ -122,7 +141,7 @@ _bus_watch (G_GNUC_UNUSED GstBus * bus, GstMessage * msg,
         GstBuffer *payload;
         const gchar *origin;
         const GstStructure *structure = gst_message_get_structure (msg);
-        gchar* dumped;
+        gchar *dumped;
         gst_structure_get (structure, "payload", GST_TYPE_BUFFER, &payload,
             "origin", G_TYPE_STRING, &origin, NULL);
         gst_printerrln ("Protection data received from origin %s", origin);
@@ -136,7 +155,7 @@ _bus_watch (G_GNUC_UNUSED GstBus * bus, GstMessage * msg,
         GstBuffer *challenge;
         gst_structure_get (structure, "challenge", GST_TYPE_BUFFER, &challenge,
             NULL);
-        GstBuffer *resultMessage = processChallenge (challenge);
+        GstBuffer *resultMessage = processChallenge (challenge, app_data);
         if (resultMessage) {
           GstElement *decryptor = GST_ELEMENT_CAST (GST_MESSAGE_SRC (msg));
           g_autoptr (GstPad) pad =
@@ -159,11 +178,20 @@ _bus_watch (G_GNUC_UNUSED GstBus * bus, GstMessage * msg,
 
 static void
 handleNeedContextMessage (G_GNUC_UNUSED GstBus * bus, GstMessage * msg,
-    G_GNUC_UNUSED gpointer userData)
+    gpointer user_data)
 {
+  AppData *app_data = (AppData *) user_data;
   const gchar *context_type;
   gst_message_parse_context_type (msg, &context_type);
-  // TODO: handle gst.soup.session context (cookies).
+
+  if (!g_strcmp0 (context_type, "gst.soup.session")) {
+    g_autoptr (GstContext) context = gst_context_new (context_type, FALSE);
+    GstStructure *contextStructure = gst_context_writable_structure (context);
+    gst_structure_set (contextStructure, "session", SOUP_TYPE_SESSION,
+        app_data->soupSession, NULL);
+    gst_element_set_context (GST_ELEMENT (GST_MESSAGE_SRC (msg)), context);
+  }
+
   if (!g_strcmp0 (context_type, "drm-preferred-decryption-system-id")) {
     g_autoptr (GstContext) context = gst_context_new (context_type, FALSE);
     GstStructure *contextStructure = gst_context_writable_structure (context);
@@ -176,6 +204,22 @@ handleNeedContextMessage (G_GNUC_UNUSED GstBus * bus, GstMessage * msg,
 int
 main (int argc, char *argv[])
 {
+  AppData *app_data = g_new (AppData, 1);
+  app_data->soupSession =
+      (SoupSession *) g_object_new (SOUP_TYPE_SESSION, NULL);
+  if (g_getenv ("SAMPLE_PLAYER_SOUP_DEBUG")) {
+    g_autoptr (SoupLogger) logger =
+        soup_logger_new (SOUP_LOGGER_LOG_HEADERS, -1);
+    soup_session_add_feature (app_data->soupSession,
+        SOUP_SESSION_FEATURE (logger));
+  }
+  soup_session_add_feature_by_type (app_data->soupSession,
+      SOUP_TYPE_COOKIE_JAR);
+  SoupCookieJar *jar =
+      SOUP_COOKIE_JAR (soup_session_get_feature (app_data->soupSession,
+          SOUP_TYPE_COOKIE_JAR));
+  soup_cookie_jar_add_cookie (jar, create_dummy_cookie ());
+
   gst_init (&argc, &argv);
 
   loop = g_main_loop_new (NULL, FALSE);
@@ -185,8 +229,8 @@ main (int argc, char *argv[])
   gst_bus_enable_sync_message_emission (bus1);
   gst_bus_add_signal_watch (bus1);
   g_signal_connect (bus1, "sync-message::need-context",
-      G_CALLBACK (handleNeedContextMessage), NULL);
-  g_signal_connect (bus1, "message", G_CALLBACK (_bus_watch), NULL);
+      G_CALLBACK (handleNeedContextMessage), app_data);
+  g_signal_connect (bus1, "message", G_CALLBACK (_bus_watch), app_data);
 
   g_object_set (pipeline, "uri", URI, NULL);
 
@@ -200,6 +244,7 @@ main (int argc, char *argv[])
   gst_bus_remove_watch (bus1);
   gst_object_unref (bus1);
   gst_object_unref (pipeline);
+  app_data_free (app_data);
   gst_deinit ();
   return 0;
 }
