@@ -29,10 +29,6 @@
 #include <gst/gst.h>
 #include <libsoup/soup.h>
 
-static GMainLoop *loop;
-static GstElement *pipeline;
-static GstBus *bus1;
-
 #define WIDEVINE_UUID "edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"
 #define LICENSE_SERVER "https://drm-widevine-licensing.axtest.net/AcquireLicense"
 
@@ -42,16 +38,20 @@ static GstBus *bus1;
 
 typedef struct _AppData
 {
+  GMainLoop *loop;
+  GstElement *pipeline;
+  GstBus *bus;
   SoupSession *soupSession;
 } AppData;
 
 static void
-app_data_free (gpointer data)
+app_data_free (AppData *app_data)
 {
-  AppData *app_data = (AppData *) data;
-  if (app_data->soupSession)
-    g_object_unref (app_data->soupSession);
-  g_free (data);
+  g_object_unref (app_data->soupSession);
+  gst_object_unref (app_data->bus);
+  gst_object_unref (app_data->pipeline);
+  g_main_loop_unref (app_data->loop);
+  g_free (app_data);
 }
 
 static SoupCookie *
@@ -96,7 +96,7 @@ _bus_watch (G_GNUC_UNUSED GstBus * bus, GstMessage * msg, gpointer user_data)
   AppData *app_data = (AppData *) user_data;
   switch (GST_MESSAGE_TYPE (msg)) {
     case GST_MESSAGE_STATE_CHANGED:
-      if (GST_ELEMENT (msg->src) == pipeline) {
+      if (GST_ELEMENT (msg->src) == app_data->pipeline) {
         GstState old, new, pending;
 
         gst_message_parse_state_changed (msg, &old, &new, &pending);
@@ -115,23 +115,23 @@ _bus_watch (G_GNUC_UNUSED GstBus * bus, GstMessage * msg, gpointer user_data)
       GError *err = NULL;
       gchar *dbg_info = NULL;
 
-      GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS (GST_BIN (pipeline),
+      GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS (GST_BIN (app_data->pipeline),
           GST_DEBUG_GRAPH_SHOW_ALL, "error");
 
       gst_message_parse_error (msg, &err, &dbg_info);
-      g_printerr ("ERROR from element %s: %s\n",
+      gst_printerrln ("ERROR from element %s: %s",
           GST_OBJECT_NAME (msg->src), err->message);
-      g_printerr ("Debugging info: %s\n", (dbg_info) ? dbg_info : "none");
+      gst_printerrln ("Debugging info: %s", (dbg_info) ? dbg_info : "none");
       g_error_free (err);
       g_free (dbg_info);
-      g_main_loop_quit (loop);
+      g_main_loop_quit (app_data->loop);
       break;
     }
     case GST_MESSAGE_EOS:{
-      GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS (GST_BIN (pipeline),
+      GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS (GST_BIN (app_data->pipeline),
           GST_DEBUG_GRAPH_SHOW_ALL, "eos");
-      g_print ("EOS received\n");
-      g_main_loop_quit (loop);
+      gst_println ("EOS received");
+      g_main_loop_quit (app_data->loop);
       break;
     }
     case GST_MESSAGE_ELEMENT:{
@@ -149,8 +149,8 @@ _bus_watch (G_GNUC_UNUSED GstBus * bus, GstMessage * msg, gpointer user_data)
         dumped = (gchar *) info.data;
         dumped[info.size] = 0;
         gst_printerrln ("payload: %s", dumped);
-        gst_buffer_unmap (payload, &info);
         /* Optionally parse payload, extract custom data. */
+        gst_buffer_unmap (payload, &info);
       } else if (gst_structure_has_name (structure, "spkl-challenge")) {
         GstBuffer *challenge;
         gst_structure_get (structure, "challenge", GST_TYPE_BUFFER, &challenge,
@@ -222,28 +222,26 @@ main (int argc, char *argv[])
 
   gst_init (&argc, &argv);
 
-  loop = g_main_loop_new (NULL, FALSE);
-  pipeline = gst_element_factory_make ("playbin", NULL);
+  app_data->loop = g_main_loop_new (NULL, FALSE);
+  app_data->pipeline = gst_element_factory_make ("playbin", NULL);
 
-  bus1 = gst_pipeline_get_bus (GST_PIPELINE (pipeline));
-  gst_bus_enable_sync_message_emission (bus1);
-  gst_bus_add_signal_watch (bus1);
-  g_signal_connect (bus1, "sync-message::need-context",
+  app_data->bus = gst_pipeline_get_bus (GST_PIPELINE (app_data->pipeline));
+  gst_bus_enable_sync_message_emission (app_data->bus);
+  gst_bus_add_signal_watch (app_data->bus);
+  g_signal_connect (app_data->bus, "sync-message::need-context",
       G_CALLBACK (handleNeedContextMessage), app_data);
-  g_signal_connect (bus1, "message", G_CALLBACK (_bus_watch), app_data);
+  g_signal_connect (app_data->bus, "message", G_CALLBACK (_bus_watch), app_data);
 
-  g_object_set (pipeline, "uri", URI, NULL);
+  g_object_set (app_data->pipeline, "uri", URI, NULL);
 
-  g_print ("Starting pipeline\n");
-  gst_element_set_state (GST_ELEMENT (pipeline), GST_STATE_PLAYING);
-  g_main_loop_run (loop);
-  gst_element_set_state (GST_ELEMENT (pipeline), GST_STATE_NULL);
-  g_print ("Pipeline stopped\n");
+  gst_println ("Starting pipeline");
+  gst_element_set_state (GST_ELEMENT (app_data->pipeline), GST_STATE_PLAYING);
+  g_main_loop_run (app_data->loop);
+  gst_element_set_state (GST_ELEMENT (app_data->pipeline), GST_STATE_NULL);
+  gst_println ("Pipeline stopped");
 
-  gst_bus_disable_sync_message_emission (bus1);
-  gst_bus_remove_watch (bus1);
-  gst_object_unref (bus1);
-  gst_object_unref (pipeline);
+  gst_bus_disable_sync_message_emission (app_data->bus);
+  gst_bus_remove_watch (app_data->bus);
   app_data_free (app_data);
   gst_deinit ();
   return 0;
