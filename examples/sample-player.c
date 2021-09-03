@@ -60,7 +60,9 @@ create_dummy_cookie ()
   SoupCookie *cookie =
       soup_cookie_new ("foo", "bar", "media.axprod.net", "", -1);
   soup_cookie_set_secure (cookie, TRUE);
+#if SOUP_CHECK_VERSION (2, 70, 0)
   soup_cookie_set_same_site_policy (cookie, SOUP_SAME_SITE_POLICY_NONE);
+#endif
   soup_cookie_set_http_only (cookie, TRUE);
   return cookie;
 }
