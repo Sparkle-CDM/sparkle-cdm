@@ -96,6 +96,24 @@ G_DEFINE_TYPE_WITH_CODE (SparkleDecryptor, spkl_decryptor,
     GST_DEBUG_CATEGORY_INIT (spkl_decryptor_debug_category,
         "sprkldecryptor", 0, "Sparkle decryptor"););
 
+class GMutexHolder
+{
+public:
+  GMutexHolder (GMutex & mutex)
+  :m (mutex)
+  {
+    g_mutex_lock (&m);
+  }
+   ~GMutexHolder ()
+  {
+    g_mutex_unlock (&m);
+  }
+
+private:
+  GMutex & m;
+};
+
+
 static void
 spklProcessChallenge (G_GNUC_UNUSED struct OpenCDMSession *session,
     void *userData, const char url[], const uint8_t challenge[],
@@ -366,12 +384,9 @@ transformInPlace (GstBaseTransform * base, GstBuffer * buffer)
     return GST_FLOW_OK;
   }
 
-  g_mutex_lock (&self->cdmAttachmentMutex);
-
   unsigned ivSize;
   if (!gst_structure_get_uint (protectionMeta->info, "iv_size", &ivSize)) {
     GST_ERROR_OBJECT (self, "Failed to get iv_size");
-    g_mutex_unlock (&self->cdmAttachmentMutex);
     return GST_FLOW_NOT_SUPPORTED;
   }
 
@@ -379,12 +394,10 @@ transformInPlace (GstBaseTransform * base, GstBuffer * buffer)
   if (!gst_structure_get_boolean (protectionMeta->info, "encrypted",
           &encrypted)) {
     GST_ERROR_OBJECT (self, "Failed to get encrypted flag");
-    g_mutex_unlock (&self->cdmAttachmentMutex);
     return GST_FLOW_NOT_SUPPORTED;
   }
 
   if (!ivSize || !encrypted) {
-    g_mutex_unlock (&self->cdmAttachmentMutex);
     return GST_FLOW_OK;
   }
 
@@ -392,7 +405,6 @@ transformInPlace (GstBaseTransform * base, GstBuffer * buffer)
   if (!gst_structure_get_uint (protectionMeta->info, "subsample_count",
           &subSampleCount)) {
     GST_ERROR_OBJECT (self, "Failed to get subsample_count");
-    g_mutex_unlock (&self->cdmAttachmentMutex);
     return GST_FLOW_NOT_SUPPORTED;
   }
 
@@ -402,14 +414,12 @@ transformInPlace (GstBaseTransform * base, GstBuffer * buffer)
     value = gst_structure_get_value (protectionMeta->info, "subsamples");
     if (!value) {
       GST_ERROR_OBJECT (self, "Failed to get subsamples");
-      g_mutex_unlock (&self->cdmAttachmentMutex);
       return GST_FLOW_NOT_SUPPORTED;
     }
     subSamplesBuffer = gst_value_get_buffer (value);
     if (!subSamplesBuffer) {
       GST_ERROR_OBJECT (self,
           "There is no subsamples buffer, but a positive subsample count");
-      g_mutex_unlock (&self->cdmAttachmentMutex);
       return GST_FLOW_NOT_SUPPORTED;
     }
   }
@@ -417,7 +427,6 @@ transformInPlace (GstBaseTransform * base, GstBuffer * buffer)
   value = gst_structure_get_value (protectionMeta->info, "kid");
   if (!value) {
     GST_ERROR_OBJECT (self, "Failed to get key id for buffer");
-    g_mutex_unlock (&self->cdmAttachmentMutex);
     return GST_FLOW_NOT_SUPPORTED;
   }
   GstBuffer *keyIDBuffer = gst_value_get_buffer (value);
@@ -425,20 +434,19 @@ transformInPlace (GstBaseTransform * base, GstBuffer * buffer)
   value = gst_structure_get_value (protectionMeta->info, "iv");
   if (!value) {
     GST_ERROR_OBJECT (self, "Failed to get IV for sample");
-    g_mutex_unlock (&self->cdmAttachmentMutex);
     return GST_FLOW_NOT_SUPPORTED;
   }
 
   GstBuffer *ivBuffer = gst_value_get_buffer (value);
 
   if (!self->provisioned) {
+    GMutexHolder lock (self->cdmAttachmentMutex);
     auto endTime = g_get_monotonic_time () + 10 * G_TIME_SPAN_SECOND;
     while (!self->provisioned) {
       if (!g_cond_wait_until (&self->cdmAttachmentCondition,
               &self->cdmAttachmentMutex, endTime)) {
         GST_ERROR_OBJECT
             (self, "CDM still not configured after 10 seconds of waiting");
-        g_mutex_unlock (&self->cdmAttachmentMutex);
         return GST_FLOW_NOT_SUPPORTED;
       }
     }
@@ -451,7 +459,6 @@ transformInPlace (GstBaseTransform * base, GstBuffer * buffer)
   auto result = opencdm_gstreamer_session_decrypt (self->session, buffer,
       subSamplesBuffer, subSampleCount, ivBuffer, keyIDBuffer, 0);
 
-  g_mutex_unlock (&self->cdmAttachmentMutex);
 
   if (result != ERROR_NONE) {
     auto *srcPad = GST_BASE_TRANSFORM_SRC_PAD (self);
