@@ -50,6 +50,7 @@ struct SparkleDecryptor {
     struct OpenCDMSession* session;
     OpenCDMSessionCallbacks sessionCallbacks;
     gboolean provisioned;
+    gboolean clearBufferNotified;
 
     GMarkupParser markupParser;
     GMarkupParseContext *markupParseContext;

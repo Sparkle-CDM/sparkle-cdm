@@ -258,6 +258,7 @@ spkl_decryptor_init (SparkleDecryptor * self)
   self->sessionCallbacks.error_message_callback = spklErrorMessage;
   self->sessionCallbacks.keys_updated_callback = spklKeysUpdated;
   self->provisioned = FALSE;
+  self->clearBufferNotified = FALSE;
 
   self->markupParser.start_element = markupStartElement;
   self->markupParser.end_element = markupEndElement;
@@ -379,8 +380,11 @@ transformInPlace (GstBaseTransform * base, GstBuffer * buffer)
   /* *INDENT-ON* */
 
   if (!protectionMeta) {
-    GST_TRACE_OBJECT (self,
-        "Buffer %p does not contain protection meta, not decrypting", buffer);
+    if (!self->clearBufferNotified) {
+      GST_TRACE_OBJECT (self,
+          "Buffer %p does not contain protection meta, not decrypting", buffer);
+      self->clearBufferNotified = TRUE;
+    }
     return GST_FLOW_OK;
   }
 
