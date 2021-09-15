@@ -594,7 +594,7 @@ changeState (GstElement * element, GstStateChange transition)
 }
 
 static void
-spkl_decryptor_dispose (GObject * object)
+spkl_decryptor_finalize (GObject * object)
 {
   auto *self = SPKL_DECRYPTOR (object);
 
@@ -617,13 +617,15 @@ spkl_decryptor_dispose (GObject * object)
   g_markup_parse_context_unref (self->markupParseContext);
   g_cond_clear (&self->cdmAttachmentCondition);
   g_mutex_clear (&self->cdmAttachmentMutex);
+
+  GST_CALL_PARENT (G_OBJECT_CLASS, finalize, (object));
 }
 
 static void
 spkl_decryptor_class_init (SparkleDecryptorClass * klass)
 {
   GObjectClass *gobjectClass = G_OBJECT_CLASS (klass);
-  gobjectClass->dispose = spkl_decryptor_dispose;
+  gobjectClass->finalize = spkl_decryptor_finalize;
 
   GstBaseTransformClass *baseTransformClass = GST_BASE_TRANSFORM_CLASS (klass);
   baseTransformClass->transform_ip = GST_DEBUG_FUNCPTR (transformInPlace);
