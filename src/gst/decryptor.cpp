@@ -220,7 +220,7 @@ markupText (G_GNUC_UNUSED GMarkupParseContext * context,
   auto *self = SPKL_DECRYPTOR (user_data);
   if (self->parsingPssh) {
     if (self->pssh)
-      g_free (self->pssh);
+      g_bytes_unref (self->pssh);
     g_autofree gchar *encodedPssh = g_strndup (text, text_len);
     gsize len;
     guchar *pssh = g_base64_decode (encodedPssh, &len);
