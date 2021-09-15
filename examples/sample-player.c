@@ -168,8 +168,6 @@ _bus_watch (G_GNUC_UNUSED GstBus * bus, GstMessage * msg, gpointer user_data)
                   gst_structure_new ("spkl-session-update", "message",
                       GST_TYPE_BUFFER, resultMessage, NULL)));
         }
-      } else if (gst_structure_has_name (structure, "spkl-key-expired")) {
-        gst_printerrln ("Key expired: %" GST_PTR_FORMAT, structure);
       }
       break;
     }

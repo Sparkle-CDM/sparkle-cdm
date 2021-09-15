@@ -48,6 +48,7 @@ struct SparkleDecryptor {
 
     struct OpenCDMSystem* system;
     struct OpenCDMSession* session;
+    struct OpenCDMSession* pending_session;
     OpenCDMSessionCallbacks sessionCallbacks;
     gboolean provisioned;
     gboolean clearBufferNotified;

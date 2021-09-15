@@ -144,6 +144,8 @@ spklKeyUpdate (struct OpenCDMSession *session, void *userData,
     const uint8_t keyId[], const uint8_t length)
 {
   auto *self = SPKL_DECRYPTOR (userData);
+  gsize pssh_size;
+  gconstpointer pssh_data = g_bytes_get_data (self->pssh, &pssh_size);
 
   GST_MEMDUMP_OBJECT (self, "keyID:", keyId, length);
   auto status = opencdm_session_status (session, keyId, length);
@@ -159,13 +161,13 @@ spklKeyUpdate (struct OpenCDMSession *session, void *userData,
   if (status != Expired)
     return;
 
-  g_autoptr (GstBus) bus = gst_element_get_bus (GST_ELEMENT_CAST (self));
-  g_autoptr (GBytes) key = g_bytes_new (keyId, length);
-  g_autoptr (GstBuffer) keyBuffer = gst_buffer_new_wrapped_bytes (key);
-  const gchar *sessionId = opencdm_session_id (session);
-  gst_bus_post (bus, gst_message_new_element (GST_OBJECT_CAST (self),
-          gst_structure_new ("spkl-key-expired", "key", GST_TYPE_BUFFER,
-              keyBuffer, "session-id", G_TYPE_STRING, sessionId, nullptr)));
+  GST_DEBUG_OBJECT (self, "Renewing session");
+  self->clearBufferNotified = FALSE;
+  // We might need to close the pending session before attempting to construct a
+  // new one?
+  opencdm_construct_session (self->system, Temporary, "cenc",
+      (const uint8_t *) pssh_data, pssh_size, nullptr, 0,
+      &self->sessionCallbacks, self, &self->pending_session);
 }
 
 static void
@@ -181,6 +183,11 @@ spklKeysUpdated (G_GNUC_UNUSED const struct OpenCDMSession *session,
     void *userData)
 {
   auto *self = SPKL_DECRYPTOR (userData);
+  if (self->pending_session) {
+    GST_DEBUG_OBJECT (self,
+        "Session pending renewal, ignoring keys-updated notification");
+    return;
+  }
   GST_DEBUG_OBJECT (self, "All keys updated, starting decryption");
   g_mutex_lock (&self->cdmAttachmentMutex);
   self->provisioned = TRUE;
@@ -253,6 +260,8 @@ spkl_decryptor_init (SparkleDecryptor * self)
 
   self->system = nullptr;
   self->session = nullptr;
+  self->pending_session = nullptr;
+  self->pssh = nullptr;
   self->sessionCallbacks.process_challenge_callback = spklProcessChallenge;
   self->sessionCallbacks.key_update_callback = spklKeyUpdate;
   self->sessionCallbacks.error_message_callback = spklErrorMessage;
@@ -442,7 +451,11 @@ transformInPlace (GstBaseTransform * base, GstBuffer * buffer)
   }
 
   GstBuffer *ivBuffer = gst_value_get_buffer (value);
+  auto *sinkPad = GST_BASE_TRANSFORM_SINK_PAD (self);
+  GstCaps *inputCaps = gst_pad_get_current_caps (sinkPad);
+  auto *capsMeta = sprkl_gst_buffer_add_caps_meta (buffer, inputCaps);
 
+retry:
   if (!self->provisioned) {
     GMutexHolder lock (self->cdmAttachmentMutex);
     auto endTime = g_get_monotonic_time () + 10 * G_TIME_SPAN_SECOND;
@@ -456,13 +469,17 @@ transformInPlace (GstBaseTransform * base, GstBuffer * buffer)
     }
   }
 
-  auto *sinkPad = GST_BASE_TRANSFORM_SINK_PAD (self);
-  GstCaps *inputCaps = gst_pad_get_current_caps (sinkPad);
-  auto *capsMeta = sprkl_gst_buffer_add_caps_meta (buffer, inputCaps);
-
   auto result = opencdm_gstreamer_session_decrypt (self->session, buffer,
       subSamplesBuffer, subSampleCount, ivBuffer, keyIDBuffer, 0);
 
+  if (result == ERROR_INVALID_SESSION && self->pending_session) {
+    GST_DEBUG_OBJECT (self, "Session expired. Switching to pending session");
+    opencdm_session_close (self->session);
+    self->session = self->pending_session;
+    self->pending_session = nullptr;
+    self->provisioned = false;
+    goto retry;
+  }
 
   if (result != ERROR_NONE) {
     auto *srcPad = GST_BASE_TRANSFORM_SRC_PAD (self);
@@ -559,8 +576,9 @@ sinkEventHandler (GstBaseTransform * trans, GstEvent * event)
             nullptr);
         GstMapInfo info GST_MAP_INFO_INIT;
         gst_buffer_map (message, &info, GST_MAP_READ);
+        struct OpenCDMSession *session = self->pending_session ? self->pending_session : self->session;
         auto success =
-            opencdm_session_update (self->session, info.data, info.size);
+            opencdm_session_update (session, info.data, info.size);
         gst_buffer_unmap (message, &info);
         if (success == ERROR_NONE) {
           forward = FALSE;
@@ -607,6 +625,11 @@ spkl_decryptor_finalize (GObject * object)
     self->session = nullptr;
   }
 
+  if (self->pending_session) {
+    opencdm_destruct_session (self->pending_session);
+    self->pending_session = nullptr;
+  }
+
   if (self->system) {
     opencdm_destruct_system (self->system);
     self->system = nullptr;
@@ -650,6 +673,5 @@ spkl_decryptor_class_init (SparkleDecryptorClass * klass)
   gst_element_class_set_static_metadata (elementClass,
       "Decrypt content using the Sparkle-CDM framework",
       GST_ELEMENT_FACTORY_KLASS_DECRYPTOR,
-      "Decrypts media using Sparkle-CDM",
-      "Sparkle-CDM Developers");
+      "Decrypts media using Sparkle-CDM", "Sparkle-CDM Developers");
 }
