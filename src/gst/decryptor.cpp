@@ -94,7 +94,7 @@ static GstStaticPadTemplate srcTemplate =
 G_DEFINE_TYPE_WITH_CODE (SparkleDecryptor, spkl_decryptor,
     GST_TYPE_BASE_TRANSFORM,
     GST_DEBUG_CATEGORY_INIT (spkl_decryptor_debug_category,
-        "sprklwvdecryptor", 0, "Sparkle decryptor"););
+        "sprkldecryptor", 0, "Sparkle decryptor"););
 
 static void
 spklProcessChallenge (G_GNUC_UNUSED struct OpenCDMSession *session,

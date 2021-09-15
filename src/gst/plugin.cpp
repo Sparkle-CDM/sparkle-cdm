@@ -30,7 +30,7 @@
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
-  return gst_element_register (plugin, "sprklwvdecryptor", GST_RANK_PRIMARY,
+  return gst_element_register (plugin, "sprkldecryptor", GST_RANK_PRIMARY,
       SPKL_TYPE_DECRYPTOR);
 }
 
