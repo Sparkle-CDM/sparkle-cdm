@@ -580,9 +580,10 @@ changeState (GstElement * element, GstStateChange transition)
 {
   auto *self = SPKL_DECRYPTOR (element);
 
+  GST_DEBUG_OBJECT (self, "%s", gst_state_change_get_name (transition));
+
   switch (transition) {
     case GST_STATE_CHANGE_PAUSED_TO_READY:
-      GST_DEBUG_OBJECT (self, "PAUSED->READY");
       g_cond_signal (&self->cdmAttachmentCondition);
       break;
     default:
