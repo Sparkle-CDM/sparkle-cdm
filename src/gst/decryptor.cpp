@@ -634,9 +634,19 @@ changeState (GstElement * element, GstStateChange transition)
 }
 
 static void
+spkl_decryptor_dispose (GObject * object)
+{
+  auto *self = SPKL_DECRYPTOR (object);
+  GST_DEBUG_OBJECT (self, "Disposing");
+  GST_CALL_PARENT (G_OBJECT_CLASS, dispose, (object));
+}
+
+static void
 spkl_decryptor_finalize (GObject * object)
 {
   auto *self = SPKL_DECRYPTOR (object);
+
+  GST_DEBUG_OBJECT (self, "Finalizing");
 
   if (self->session) {
     opencdm_destruct_session (self->session);
@@ -671,6 +681,7 @@ spkl_decryptor_class_init (SparkleDecryptorClass * klass)
 {
   GObjectClass *gobjectClass = G_OBJECT_CLASS (klass);
   gobjectClass->finalize = spkl_decryptor_finalize;
+  gobjectClass->dispose = spkl_decryptor_dispose;
 
   GstBaseTransformClass *baseTransformClass = GST_BASE_TRANSFORM_CLASS (klass);
   baseTransformClass->transform_ip = GST_DEBUG_FUNCPTR (transformInPlace);
