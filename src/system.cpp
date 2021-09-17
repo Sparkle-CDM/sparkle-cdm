@@ -107,6 +107,8 @@ GModule* moduleForKeySystem(const char* keySystem)
     auto* module = (GModule*)g_hash_table_lookup(s_modules, keySystem);
     GST_DEBUG("Module lookup result for %s: %s", keySystem,
         module ? g_module_name(module) : "");
+    if (!module)
+      GST_ERROR("Module not found for key system %s", keySystem);
     return module;
 }
 
@@ -125,6 +127,8 @@ GModule* moduleForSystem(struct OpenCDMSystem* system)
     auto* module = (GModule*)g_hash_table_lookup(s_systems, system);
     GST_DEBUG("Module lookup result for system %p: %s", system,
         module ? g_module_name(module) : "");
+    if (!module)
+      GST_ERROR("Module not found");
     return module;
 }
 
@@ -149,6 +153,8 @@ GModule* moduleForSession(const struct OpenCDMSession* session)
     auto* module = (GModule*)g_hash_table_lookup(s_sessions, session);
     GST_DEBUG("Module lookup result for session %p: %s", session,
         module ? g_module_name(module) : "");
+    if (!module)
+      GST_ERROR("Module not found for session %p", session);
     return module;
 }
 void unregisterSession(struct OpenCDMSession* session)
