@@ -474,7 +474,7 @@ retry:
 
   if (result == ERROR_INVALID_SESSION && self->pending_session) {
     GST_DEBUG_OBJECT (self, "Session expired. Switching to pending session");
-    opencdm_session_close (self->session);
+    opencdm_destruct_session (self->session);
     self->session = self->pending_session;
     self->pending_session = nullptr;
     self->provisioned = false;
