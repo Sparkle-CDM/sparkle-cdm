@@ -608,6 +608,24 @@ changeState (GstElement * element, GstStateChange transition)
     case GST_STATE_CHANGE_PAUSED_TO_READY:
       g_cond_signal (&self->cdmAttachmentCondition);
       break;
+    case GST_STATE_CHANGE_READY_TO_NULL:
+
+      if (self->session) {
+        opencdm_destruct_session (self->session);
+        self->session = nullptr;
+      }
+
+      if (self->pending_session) {
+        opencdm_destruct_session (self->pending_session);
+        self->pending_session = nullptr;
+      }
+
+      if (self->system) {
+        opencdm_destruct_system (self->system);
+        self->system = nullptr;
+      }
+
+      break;
     default:
       break;
   }
