@@ -105,6 +105,7 @@ void OpenCDMSession::processInitData()
     }
 
     GList* keys = nullptr;
+    GST_DEBUG("Init data type: %s", m_initDataType.c_str());
     if (m_initDataType == "cenc") {
         GstByteReader br;
         const guint8* data;
@@ -135,7 +136,21 @@ void OpenCDMSession::processInitData()
             GST_WARNING("CENC payload too small");
         }
     } else if (m_initDataType == "keyids") {
-        keys = g_list_append(keys, g_strndup(reinterpret_cast<const gchar*>(m_pbInitData), m_cbInitData));
+        g_autoptr(GError) error = nullptr;
+        g_autoptr(JsonParser) parser = json_parser_new_immutable();
+        if (!json_parser_load_from_data(parser, reinterpret_cast<const gchar*>(m_pbInitData), m_cbInitData, &error)) {
+            GST_ERROR("KeyIDs loading failed: %s", error->message);
+            return;
+        }
+        JsonNode* root = json_parser_get_root(parser);
+        JsonObject* root_obj = json_node_get_object(root);
+        JsonNode* array_node = json_object_get_member(root_obj, "kids");
+        JsonArray* array = json_node_get_array(array_node);
+        guint length = json_array_get_length(array);
+        for (guint i = 0; i < length; i++) {
+            const gchar* value = json_array_get_string_element(array, i);
+            keys = g_list_append(keys, g_strndup(value, strlen(value)));
+        }
     } else if (m_initDataType == "webm") {
         gchar* encoded_kid = encode_kid(m_pbInitData, m_cbInitData);
         keys = g_list_append(keys, encoded_kid);
