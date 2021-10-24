@@ -40,3 +40,5 @@ pkg.generate(sparkle_cdm_lib,
 sparkle_cdm_dep = declare_dependency(link_with: sparkle_cdm_lib)
 
 subdir('gst')
+
+subdir('clearkey')

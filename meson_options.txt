@@ -1,2 +1,3 @@
 
 option('sample-player', type : 'feature', value : 'auto', description : 'Build sample player')
+option('clearkey-module', type : 'feature', value : 'auto', description : 'W3C Clear Key decryption module')
