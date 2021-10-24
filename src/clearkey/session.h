@@ -35,15 +35,14 @@ public:
     OpenCDMError decrypt(GstBuffer* buffer, GstBuffer* subSample, const uint32_t subSampleCount, GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15);
 
     void cacheKey(const gchar* keyID, const gchar* keyValue);
-    void processInitData();
 
 private:
+    void processInitData();
     gchar* encode_kid(const guint8* d, gsize size);
 
     gchar* m_id;
     OpenCDMSessionCallbacks* m_callbacks;
     void* m_userData;
-    OpenCDMSystem* m_system;
     LicenseType m_licenseType;
     std::string m_initDataType;
     const uint8_t* m_pbInitData;

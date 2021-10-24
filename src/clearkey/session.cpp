@@ -8,13 +8,6 @@
 
 #define GST_CAT_DEFAULT cdm_debug_category
 
-static gboolean processInitDataCb(gpointer userData)
-{
-    auto* session = reinterpret_cast<OpenCDMSession*>(userData);
-    session->processInitData();
-    return G_SOURCE_REMOVE;
-}
-
 OpenCDMSession::OpenCDMSession(OpenCDMSystem* system,
     const std::string& initDataType,
     const uint8_t* pbInitData, const uint16_t cbInitData,
@@ -25,7 +18,6 @@ OpenCDMSession::OpenCDMSession(OpenCDMSystem* system,
     void* userData)
     : m_callbacks(callbacks)
     , m_userData(userData)
-    , m_system(system)
     , m_licenseType(licenseType)
     , m_initDataType(initDataType)
     , m_pbInitData(pbInitData)
@@ -33,11 +25,12 @@ OpenCDMSession::OpenCDMSession(OpenCDMSystem* system,
 {
     UNUSED_PARAM(pbCustomData);
     UNUSED_PARAM(cbCustomData);
+    UNUSED_PARAM(system);
 
     static uint32_t gId = 0;
     m_id = g_strdup_printf("ck%u", gId++);
 
-    g_idle_add(processInitDataCb, this);
+    processInitData();
 }
 
 OpenCDMSession::~OpenCDMSession()
@@ -214,8 +207,8 @@ OpenCDMError OpenCDMSession::update(const std::string& response)
         return ERROR_NONE;
     }
 
-    GError* error;
-    JsonParser* parser = json_parser_new_immutable();
+    g_autoptr(GError) error = nullptr;
+    g_autoptr(JsonParser) parser = json_parser_new_immutable();
     if (!json_parser_load_from_data(parser, response.c_str(), response.size(), &error)) {
         GST_ERROR("Session update failed: %s", error->message);
         return ERROR_FAIL;
@@ -242,7 +235,10 @@ OpenCDMError OpenCDMSession::update(const std::string& response)
 
             GST_DEBUG("Processing keyID %s", keyID);
 
-            const gchar* keyValue = json_object_get_string_member(node, "k");
+            const gchar* keyValue = nullptr;
+            if (json_object_has_member(node, "k"))
+                keyValue = json_object_get_string_member(node, "k");
+
             if (!keyValue) {
                 GST_WARNING("Key value not found for keyID %s", keyID);
                 return;
@@ -298,9 +294,7 @@ OpenCDMError OpenCDMSession::close()
 OpenCDMError OpenCDMSession::destruct()
 {
     GST_DEBUG("Destructing session");
-    auto status = close();
-    m_system->unregisterSession(m_id);
-    return status;
+    return close();
 }
 
 OpenCDMError OpenCDMSession::decrypt(GstBuffer* buffer, GstBuffer* subSample, const uint32_t subSampleCount, GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15)
