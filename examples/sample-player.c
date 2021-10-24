@@ -3,12 +3,12 @@
 #include <gst/gst.h>
 #include <libsoup/soup.h>
 
-#define WIDEVINE_UUID "edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"
-#define LICENSE_SERVER "https://drm-widevine-licensing.axtest.net/AcquireLicense"
+// For Widevine support you need to set a `TOKEN` environment variable. If using
+// the https://github.com/Axinom/public-test-vectors the token are listed as
+// X-AxDRM-Message values.
 
-// https://github.com/Axinom/public-test-vectors
-#define URI "https://media.axprod.net/TestVectors/v7-MultiDRM-SingleKey/Manifest_AudioOnly.mpd"
-#define TOKEN "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2ZXJzaW9uIjoxLCJjb21fa2V5X2lkIjoiYjMzNjRlYjUtNTFmNi00YWUzLThjOTgtMzNjZWQ1ZTMxYzc4IiwibWVzc2FnZSI6eyJ0eXBlIjoiZW50aXRsZW1lbnRfbWVzc2FnZSIsImtleXMiOlt7ImlkIjoiOWViNDA1MGQtZTQ0Yi00ODAyLTkzMmUtMjdkNzUwODNlMjY2IiwiZW5jcnlwdGVkX2tleSI6ImxLM09qSExZVzI0Y3Iya3RSNzRmbnc9PSJ9XX19.4lWwW46k-oWcah8oN18LPj5OLS5ZU-_AQv7fe0JhNjA"
+GST_DEBUG_CATEGORY (player_debug);
+#define GST_CAT_DEFAULT player_debug
 
 typedef struct _AppData
 {
@@ -16,15 +16,22 @@ typedef struct _AppData
   GstElement *pipeline;
   GstBus *bus;
   SoupSession *soupSession;
+  gboolean parsingLaurl;
+  gchar *licenseUrl;
+  GMarkupParser markupParser;
+  GMarkupParseContext *markupParseContext;
+  const gchar *system_uuid;
 } AppData;
 
 static void
-app_data_free (AppData *app_data)
+app_data_free (AppData * app_data)
 {
   g_object_unref (app_data->soupSession);
   gst_object_unref (app_data->bus);
   gst_object_unref (app_data->pipeline);
   g_main_loop_unref (app_data->loop);
+  g_markup_parse_context_unref (app_data->markupParseContext);
+  g_free (app_data->licenseUrl);
   g_free (app_data);
 }
 
@@ -34,7 +41,7 @@ create_dummy_cookie ()
   SoupCookie *cookie =
       soup_cookie_new ("foo", "bar", "media.axprod.net", "", -1);
   soup_cookie_set_secure (cookie, TRUE);
-#if SOUP_CHECK_VERSION (2, 70, 0)
+#if SOUP_CHECK_VERSION(2, 70, 0)
   soup_cookie_set_same_site_policy (cookie, SOUP_SAME_SITE_POLICY_NONE);
 #endif
   soup_cookie_set_http_only (cookie, TRUE);
@@ -46,13 +53,25 @@ processChallenge (GstBuffer * challenge, AppData * app_data)
 {
   GstMapInfo info = GST_MAP_INFO_INIT;
 
-  g_autoptr (SoupMessage) soup_msg = soup_message_new ("POST", LICENSE_SERVER);
+  if (!app_data->licenseUrl) {
+    GST_WARNING ("License URL not found. Not declared in DASH manifest?");
+    return NULL;
+  }
+  g_autoptr (SoupMessage) soup_msg =
+      soup_message_new ("POST", app_data->licenseUrl);
   gst_buffer_map (challenge, &info, GST_MAP_READ);
-  soup_message_set_request (soup_msg, "application/octet-stream",
-      SOUP_MEMORY_COPY, (const gchar *) info.data, info.size);
+  gchar *request_type =
+      (char) info.data[0] ==
+      '{' ? "application/json" : "application/octet-stream";
+  soup_message_set_request (soup_msg, request_type, SOUP_MEMORY_COPY,
+      (const gchar *) info.data, info.size);
   gst_buffer_unmap (challenge, &info);
-  soup_message_headers_append (soup_msg->request_headers,
-      "X-AxDRM-Message", TOKEN);
+
+  const gchar *token = g_getenv ("TOKEN");
+  if (token) {
+    soup_message_headers_append (soup_msg->request_headers,
+        "X-AxDRM-Message", token);
+  }
 
   soup_session_send_message (app_data->soupSession, soup_msg);
   if (SOUP_STATUS_IS_SUCCESSFUL (soup_msg->status_code)) {
@@ -63,6 +82,18 @@ processChallenge (GstBuffer * challenge, AppData * app_data)
     GST_WARNING ("Error %d : %s", soup_msg->status_code,
         soup_msg->reason_phrase);
     return NULL;
+  }
+}
+
+static void
+extract_license_server_url (AppData * app_data, const guint8 * data, gsize size)
+{
+  g_autoptr (GError) error = NULL;
+  if (!g_markup_parse_context_parse (app_data->markupParseContext,
+          (const gchar *) data, size, &error)) {
+    GST_WARNING ("XML parse error: %s", error->message);
+  } else {
+    gst_println ("License server URL: %s", app_data->licenseUrl);
   }
 }
 
@@ -125,7 +156,7 @@ _bus_watch (G_GNUC_UNUSED GstBus * bus, GstMessage * msg, gpointer user_data)
         dumped = (gchar *) info.data;
         dumped[info.size] = 0;
         gst_printerrln ("payload: %s", dumped);
-        /* Optionally parse payload, extract custom data. */
+        extract_license_server_url (app_data, info.data, info.size);
         gst_buffer_unmap (payload, &info);
       } else if (gst_structure_has_name (structure, "spkl-challenge")) {
         GstBuffer *challenge;
@@ -170,15 +201,60 @@ handleNeedContextMessage (G_GNUC_UNUSED GstBus * bus, GstMessage * msg,
     g_autoptr (GstContext) context = gst_context_new (context_type, FALSE);
     GstStructure *contextStructure = gst_context_writable_structure (context);
     gst_structure_set (contextStructure, "decryption-system-id", G_TYPE_STRING,
-        WIDEVINE_UUID, NULL);
+        app_data->system_uuid, NULL);
     gst_element_set_context (GST_ELEMENT (GST_MESSAGE_SRC (msg)), context);
+  }
+}
+
+static void
+markupStartElement (G_GNUC_UNUSED GMarkupParseContext * context,
+    const gchar * element_name,
+    G_GNUC_UNUSED const gchar ** attribute_names,
+    G_GNUC_UNUSED const gchar ** attribute_values, gpointer user_data,
+    G_GNUC_UNUSED GError ** error)
+{
+  AppData *app_data = (AppData *) user_data;
+  if (g_str_has_suffix (element_name, "Laurl")) {
+    app_data->parsingLaurl = TRUE;
+  }
+}
+
+static void
+markupEndElement (G_GNUC_UNUSED GMarkupParseContext * context,
+    const gchar * element_name, gpointer user_data,
+    G_GNUC_UNUSED GError ** error)
+{
+  AppData *app_data = (AppData *) user_data;
+  if (g_str_has_suffix (element_name, "Laurl")) {
+    app_data->parsingLaurl = FALSE;
+  }
+}
+
+static void
+markupText (G_GNUC_UNUSED GMarkupParseContext * context,
+    const gchar * text, gsize text_len, gpointer user_data,
+    G_GNUC_UNUSED GError ** error)
+{
+  AppData *app_data = (AppData *) user_data;
+  if (app_data->parsingLaurl) {
+    if (app_data->licenseUrl)
+      g_free (app_data->licenseUrl);
+    app_data->licenseUrl = g_strndup (text, text_len);
   }
 }
 
 int
 main (int argc, char *argv[])
 {
+  if (argc != 3) {
+    gst_printerrln ("Usage: %s <system-uuid> <dash manifest url>", argv[0]);
+    gst_printerrln
+        ("  Where system-uuid is edef8ba9-79d6-4ace-a3c8-27dcd51d21ed for Widevine, or e2719d58-a985-b3c9-781a-b030af78d30e for ClearKey");
+    return 1;
+  }
+
   AppData *app_data = g_new (AppData, 1);
+  app_data->system_uuid = argv[1];
   app_data->soupSession =
       (SoupSession *) g_object_new (SOUP_TYPE_SESSION, NULL);
   if (g_getenv ("SAMPLE_PLAYER_SOUP_DEBUG")) {
@@ -194,6 +270,20 @@ main (int argc, char *argv[])
           SOUP_TYPE_COOKIE_JAR));
   soup_cookie_jar_add_cookie (jar, create_dummy_cookie ());
 
+  app_data->markupParser.start_element = markupStartElement;
+  app_data->markupParser.end_element = markupEndElement;
+  app_data->markupParser.text = markupText;
+  app_data->markupParseContext =
+      g_markup_parse_context_new (&app_data->markupParser,
+      (GMarkupParseFlags) 0, app_data, NULL);
+  app_data->parsingLaurl = FALSE;
+  app_data->licenseUrl = NULL;
+
+  const gchar *licenseUrl = g_getenv ("LICENSE_URL");
+  if (licenseUrl)
+    app_data->licenseUrl = g_strdup (licenseUrl);
+
+  GST_DEBUG_CATEGORY_INIT (player_debug, "sprklplayer", 0, "sample-player");
   gst_init (&argc, &argv);
 
   app_data->loop = g_main_loop_new (NULL, FALSE);
@@ -204,9 +294,10 @@ main (int argc, char *argv[])
   gst_bus_add_signal_watch (app_data->bus);
   g_signal_connect (app_data->bus, "sync-message::need-context",
       G_CALLBACK (handleNeedContextMessage), app_data);
-  g_signal_connect (app_data->bus, "message", G_CALLBACK (_bus_watch), app_data);
+  g_signal_connect (app_data->bus, "message", G_CALLBACK (_bus_watch),
+      app_data);
 
-  g_object_set (app_data->pipeline, "uri", URI, NULL);
+  g_object_set (app_data->pipeline, "uri", argv[2], NULL);
 
   gst_println ("Starting pipeline");
   gst_element_set_state (GST_ELEMENT (app_data->pipeline), GST_STATE_PLAYING);
