@@ -3,16 +3,19 @@
 #include "decryptor.h"
 #include "open_cdm_adapter.h"
 #include "sprkl/sprklgst.h"
+#include <uuid.h>
 
 #define WIDEVINE_UUID "edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"
+#define CLEARKEY_UUID "1077efec-c0b2-4d02-ace3-3c1e52e2fb4b"
+#define DASH_CLEARKEY_UUID "e2719d58-a985-b3c9-781a-b030af78d30e"
 
 /**
  *
  * This decryptor is meant to be used in non-web-browser applications. The
  * use-case is currently limited to:
  * - DASH
- * - Audio only (Flac, Opus, AAC)
- * - Widevine
+ * - Audio only (Flac, Opus, AAC) for Widevine
+ * - Audio and video for ClearKey
  *
  * Media players relying on playbin should be able to make use of this
  * decryptor, that would be automatically plugged internally as required,
@@ -61,17 +64,39 @@ static GstStaticPadTemplate sinkTemplate =
         "application/x-cenc, original-media-type=(string)audio/x-opus, "
         "protection-system=(string)" WIDEVINE_UUID ";"
         "application/x-cenc, original-media-type=(string)audio/mpeg, "
-        "protection-system=(string)" WIDEVINE_UUID ";"));
+        "protection-system=(string)" WIDEVINE_UUID ";"
+        "application/x-cenc, original-media-type=(string)audio/x-flac, "
+        "protection-system=(string)" CLEARKEY_UUID ";"
+        "application/x-cenc, original-media-type=(string)audio/x-opus, "
+        "protection-system=(string)" CLEARKEY_UUID ";"
+        "application/x-cenc, original-media-type=(string)audio/mpeg, "
+        "protection-system=(string)" CLEARKEY_UUID ";"
+        "application/x-cenc, original-media-type=(string)video/x-h264, "
+        "protection-system=(string)" CLEARKEY_UUID ";"
+        "application/x-cenc, original-media-type=(string)video/x-h265, "
+        "protection-system=(string)" CLEARKEY_UUID ";"
+        "application/x-cenc, original-media-type=(string)audio/x-flac, "
+        "protection-system=(string)" DASH_CLEARKEY_UUID ";"
+        "application/x-cenc, original-media-type=(string)audio/x-opus, "
+        "protection-system=(string)" DASH_CLEARKEY_UUID ";"
+        "application/x-cenc, original-media-type=(string)audio/mpeg, "
+        "protection-system=(string)" DASH_CLEARKEY_UUID ";"
+        "application/x-cenc, original-media-type=(string)video/x-h264, "
+        "protection-system=(string)" DASH_CLEARKEY_UUID ";"
+        "application/x-cenc, original-media-type=(string)video/x-h265, "
+        "protection-system=(string)" DASH_CLEARKEY_UUID ";"));
 
 static GstStaticPadTemplate srcTemplate =
     GST_STATIC_PAD_TEMPLATE ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
-    GST_STATIC_CAPS ("audio/x-opus; audio/x-flac; audio/mpeg"));
+    GST_STATIC_CAPS
+    ("audio/x-opus; audio/x-flac; audio/mpeg; video/x-h264; video/x-h265"));
 
 #define spkl_decryptor_parent_class parent_class
 G_DEFINE_TYPE_WITH_CODE (SparkleDecryptor, spkl_decryptor,
     GST_TYPE_BASE_TRANSFORM,
     GST_DEBUG_CATEGORY_INIT (spkl_decryptor_debug_category,
-        "sprkldecryptor", 0, "Sparkle decryptor"););
+        "sprkldecryptor", 0, "Sparkle decryptor");
+    );
 
 class GMutexHolder
 {
@@ -122,7 +147,7 @@ spklKeyUpdate (struct OpenCDMSession *session, void *userData,
 {
   auto *self = SPKL_DECRYPTOR (userData);
   gsize pssh_size;
-  gconstpointer pssh_data = g_bytes_get_data (self->pssh, &pssh_size);
+  gconstpointer pssh_data;
 
   GST_MEMDUMP_OBJECT (self, "keyID:", keyId, length);
   auto status = opencdm_session_status (session, keyId, length);
@@ -142,6 +167,7 @@ spklKeyUpdate (struct OpenCDMSession *session, void *userData,
   self->clearBufferNotified = FALSE;
   // We might need to close the pending session before attempting to construct a
   // new one?
+  pssh_data = g_bytes_get_data (self->pssh, &pssh_size);
   opencdm_construct_session (self->system, Temporary, "cenc",
       (const uint8_t *) pssh_data, pssh_size, nullptr, 0,
       &self->sessionCallbacks, self, &self->pending_session);
@@ -172,16 +198,50 @@ spklKeysUpdated (G_GNUC_UNUSED const struct OpenCDMSession *session,
   g_mutex_unlock (&self->cdmAttachmentMutex);
 }
 
+static const gchar *
+get_attr_val (const gchar ** names, const gchar ** vals, const gchar * name)
+{
+  while (names != nullptr && *names != nullptr) {
+    if (strcmp (*names, name) == 0 || g_str_has_suffix (*names, name))
+      return *vals;
+    ++names;
+    ++vals;
+  }
+  return nullptr;
+}
+
+static void
+encode_key (SparkleDecryptor * self, const gchar * kid, gsize size)
+{
+  if (self->kid)
+    g_free (self->kid);
+  g_autofree gchar *encoded_kid = g_base64_encode ((const guchar *) kid, size);
+  // Convert to Base64-URL (remove trailing ==)
+  self->kid = g_strndup (encoded_kid, strlen (encoded_kid) - 2);
+}
+
 static void
 markupStartElement (G_GNUC_UNUSED GMarkupParseContext * context,
     const gchar * element_name,
-    G_GNUC_UNUSED const gchar ** attribute_names,
-    G_GNUC_UNUSED const gchar ** attribute_values, gpointer user_data,
+    const gchar ** attribute_names,
+    const gchar ** attribute_values, gpointer user_data,
     G_GNUC_UNUSED GError ** error)
 {
   auto *self = SPKL_DECRYPTOR (user_data);
   if (g_str_has_suffix (element_name, "pssh")) {
     self->parsingPssh = TRUE;
+  } else {
+    const gchar *kid =
+        get_attr_val (attribute_names, attribute_values, "default_KID");
+    if (kid != nullptr) {
+      uuid_t uuid;
+      if (uuid_parse (kid, uuid) != -1) {
+        encode_key (self, (const gchar *) uuid, 16);
+      } else {
+        GST_DEBUG_OBJECT (self, "default_KID is not a UUID, encoding as-is");
+        encode_key (self, kid, strlen (kid));
+      }
+    }
   }
 }
 
@@ -284,7 +344,6 @@ transformCaps (GstBaseTransform * base, GstPadDirection direction,
   unsigned size = gst_caps_get_size (caps);
   for (unsigned i = 0; i < size; ++i) {
     GstStructure *incomingStructure = gst_caps_get_structure (caps, i);
-    const char *encryptionScheme = gst_structure_get_name (incomingStructure);
     g_autoptr (GstStructure) outgoingStructure = nullptr;
 
     if (direction == GST_PAD_SINK) {
@@ -307,12 +366,6 @@ transformCaps (GstBaseTransform * base, GstPadDirection direction,
       gst_structure_remove_fields (outgoingStructure, "base-profile",
           "codec_data", "height", "framerate", "level",
           "pixel-aspect-ratio", "profile", "rate", "width", nullptr);
-
-      gst_structure_set (outgoingStructure, "protection-system", G_TYPE_STRING,
-          WIDEVINE_UUID, "original-media-type", G_TYPE_STRING,
-          gst_structure_get_name (incomingStructure), nullptr);
-
-      gst_structure_set_name (outgoingStructure, encryptionScheme);
     }
 
     bool duplicate = false;
@@ -483,6 +536,19 @@ retry:
   return GST_FLOW_OK;
 }
 
+static const gchar *
+systemIdHumanReadable (const gchar * uuid)
+{
+  if (g_str_equal (uuid, WIDEVINE_UUID))
+    return "com.widevine.alpha";
+  if (g_str_equal (uuid, CLEARKEY_UUID))
+    return "org.w3.clearkey";
+  if (g_str_equal (uuid, DASH_CLEARKEY_UUID))
+    return "org.w3.clearkey";
+
+  return nullptr;
+}
+
 static gboolean
 sinkEventHandler (GstBaseTransform * trans, GstEvent * event)
 {
@@ -492,18 +558,32 @@ sinkEventHandler (GstBaseTransform * trans, GstEvent * event)
 
   switch (GST_EVENT_TYPE (event)) {
     case GST_EVENT_PROTECTION:{
+      const gchar *systemUUID;
       const gchar *systemId;
       const gchar *origin;
       GstBuffer *protectionData;
+      GstMapInfo info GST_MAP_INFO_INIT;
       GST_DEBUG_OBJECT (self, "Got protection event %" GST_PTR_FORMAT, event);
-      gst_event_parse_protection (event, &systemId, &protectionData, &origin);
+      gst_event_parse_protection (event, &systemUUID, &protectionData, &origin);
+      systemId = systemIdHumanReadable (systemUUID);
 
-      if (g_str_equal (origin, "dash/mpd")
-          && g_str_equal (systemId, WIDEVINE_UUID)) {
+      if (g_str_equal (systemUUID, "dash:mp4protection:2011")) {
+        g_autoptr (GError) error = NULL;
+        gst_buffer_map (protectionData, &info, GST_MAP_READ);
+        GST_MEMDUMP_OBJECT (self, "data", info.data, info.size);
+        if (!g_markup_parse_context_parse (self->markupParseContext,
+                (const gchar *) info.data, info.size, &error)) {
+          GST_WARNING_OBJECT (self, "XML parse error: %s", error->message);
+          gst_buffer_unmap (protectionData, &info);
+          break;
+        }
+        gst_buffer_unmap (protectionData, &info);
+      }
 
-        if (opencdm_is_type_supported ("com.widevine.alpha",
-                nullptr) != ERROR_NONE) {
-          GST_ERROR_OBJECT (self, "No Widevine support detected");
+      if (g_str_equal (origin, "dash/mpd") && systemId) {
+        if (opencdm_is_type_supported (systemId, nullptr) != ERROR_NONE) {
+          GST_ERROR_OBJECT (self, "No support detected for %s", systemId);
+          gst_buffer_unmap (protectionData, &info);
           break;
         }
         // Send the protection data to the app so it can parse potentially non-spec compliant markup.
@@ -513,11 +593,9 @@ sinkEventHandler (GstBaseTransform * trans, GstEvent * event)
                     GST_TYPE_BUFFER, protectionData, "origin", G_TYPE_STRING,
                     origin, nullptr)));
 
-        GstMapInfo info GST_MAP_INFO_INIT;
+        g_autoptr (GError) error = NULL;
         gst_buffer_map (protectionData, &info, GST_MAP_READ);
         GST_MEMDUMP_OBJECT (self, "data", info.data, info.size);
-
-        g_autoptr (GError) error = NULL;
         if (!g_markup_parse_context_parse (self->markupParseContext,
                 (const gchar *) info.data, info.size, &error)) {
           GST_WARNING_OBJECT (self, "XML parse error: %s", error->message);
@@ -526,11 +604,20 @@ sinkEventHandler (GstBaseTransform * trans, GstEvent * event)
         }
         gst_buffer_unmap (protectionData, &info);
 
-        self->system = opencdm_create_system ("com.widevine.alpha");
-        gsize pssh_size;
-        gconstpointer pssh_data = g_bytes_get_data (self->pssh, &pssh_size);
-        opencdm_construct_session (self->system, Temporary, "cenc",
-            (const uint8_t *) pssh_data, pssh_size, nullptr, 0,
+        self->system = opencdm_create_system (systemId);
+        gsize initDataSize;
+        gconstpointer initData;
+        const gchar *initDataType = "cenc";
+        if (self->pssh)
+          initData = g_bytes_get_data (self->pssh, &initDataSize);
+        else {
+          initData = self->kid;
+          initDataSize = strlen (self->kid);
+          initDataType = "keyids";
+        }
+
+        opencdm_construct_session (self->system, Temporary, initDataType,
+            (const uint8_t *) initData, initDataSize, nullptr, 0,
             &self->sessionCallbacks, self, &self->session);
         GST_DEBUG_OBJECT (self, "Session: %p", self->session);
         if (self->session) {
@@ -553,9 +640,9 @@ sinkEventHandler (GstBaseTransform * trans, GstEvent * event)
             nullptr);
         GstMapInfo info GST_MAP_INFO_INIT;
         gst_buffer_map (message, &info, GST_MAP_READ);
-        struct OpenCDMSession *session = self->pending_session ? self->pending_session : self->session;
-        auto success =
-            opencdm_session_update (session, info.data, info.size);
+        struct OpenCDMSession *session =
+            self->pending_session ? self->pending_session : self->session;
+        auto success = opencdm_session_update (session, info.data, info.size);
         gst_buffer_unmap (message, &info);
         if (success == ERROR_NONE) {
           forward = FALSE;
@@ -645,6 +732,9 @@ spkl_decryptor_finalize (GObject * object)
 
   if (self->pssh)
     g_bytes_unref (self->pssh);
+
+  if (self->kid)
+    g_free (self->kid);
 
   g_markup_parse_context_unref (self->markupParseContext);
   g_cond_clear (&self->cdmAttachmentCondition);

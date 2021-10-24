@@ -2,6 +2,7 @@
 
 sprkl_gst_deps = [ dependency('gstreamer-1.0'),
                    dependency('gstreamer-base-1.0'),
+                   dependency('uuid'),
                    sparkle_cdm_dep,
                  ]
 

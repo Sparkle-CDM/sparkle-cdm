@@ -34,6 +34,7 @@ struct SparkleDecryptor {
     GMarkupParseContext *markupParseContext;
     gboolean parsingPssh;
     GBytes* pssh;
+    gchar* kid;
 
     GMutex cdmAttachmentMutex;
     GCond cdmAttachmentCondition;
