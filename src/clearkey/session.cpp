@@ -224,54 +224,55 @@ OpenCDMError OpenCDMSession::update(const std::string& response)
 
     g_autoptr(GError) error = nullptr;
     g_autoptr(JsonParser) parser = json_parser_new_immutable();
-    if (!json_parser_load_from_data(parser, response.c_str(), response.size(), &error)) {
+    if (json_parser_load_from_data(parser, response.c_str(), response.size(), &error)) {
+        JsonNode* root = json_parser_get_root(parser);
+        JsonObject* root_obj = json_node_get_object(root);
+        JsonNode* array_node = json_object_get_member(root_obj, "keys");
+        JsonArray* array = json_node_get_array(array_node);
+        json_array_foreach_element(
+            array, [](JsonArray*, guint, JsonNode* item, gpointer userData) {
+                JsonObject* node = json_node_get_object(item);
+                const gchar* keyType = json_object_get_string_member(node, "kty");
+                if (!keyType || !g_str_equal(keyType, "oct")) {
+                    GST_WARNING("Invalid key type: %s", keyType);
+                    return;
+                }
+
+                const gchar* keyID = json_object_get_string_member(node, "kid");
+                if (!keyID) {
+                    GST_WARNING("kid not found in node");
+                    return;
+                }
+
+                GST_DEBUG("Processing keyID %s", keyID);
+
+                const gchar* keyValue = nullptr;
+                if (json_object_has_member(node, "k"))
+                    keyValue = json_object_get_string_member(node, "k");
+
+                if (!keyValue) {
+                    GST_WARNING("Key value not found for keyID %s", keyID);
+                    return;
+                }
+
+                // https://www.w3.org/TR/encrypted-media/#using-base64url
+                g_autofree gchar* original_kid = g_strdup_printf("%s==", keyID);
+                g_autofree gchar* original_key_val = g_strdup_printf("%s==", keyValue);
+                gchar* key_val = g_strdelimit(original_key_val, "-", '+');
+                key_val = g_strdelimit(original_key_val, "_", '/');
+
+                gchar* kid = g_strdelimit(original_kid, "-", '+');
+                kid = g_strdelimit(original_kid, "_", '/');
+
+                auto* session = reinterpret_cast<OpenCDMSession*>(userData);
+                session->cacheKey(kid, key_val);
+            },
+            this);
+    } else {
         GST_ERROR("Session update failed: %s", error->message);
-        return ERROR_FAIL;
+        if (error->code == JSON_PARSER_ERROR_INVALID_DATA)
+            return ERROR_FAIL;
     }
-
-    JsonNode* root = json_parser_get_root(parser);
-    JsonObject* root_obj = json_node_get_object(root);
-    JsonNode* array_node = json_object_get_member(root_obj, "keys");
-    JsonArray* array = json_node_get_array(array_node);
-    json_array_foreach_element(
-        array, [](JsonArray*, guint, JsonNode* item, gpointer userData) {
-            JsonObject* node = json_node_get_object(item);
-            const gchar* keyType = json_object_get_string_member(node, "kty");
-            if (!keyType || !g_str_equal(keyType, "oct")) {
-                GST_WARNING("Invalid key type: %s", keyType);
-                return;
-            }
-
-            const gchar* keyID = json_object_get_string_member(node, "kid");
-            if (!keyID) {
-                GST_WARNING("kid not found in node");
-                return;
-            }
-
-            GST_DEBUG("Processing keyID %s", keyID);
-
-            const gchar* keyValue = nullptr;
-            if (json_object_has_member(node, "k"))
-                keyValue = json_object_get_string_member(node, "k");
-
-            if (!keyValue) {
-                GST_WARNING("Key value not found for keyID %s", keyID);
-                return;
-            }
-
-            // https://www.w3.org/TR/encrypted-media/#using-base64url
-            g_autofree gchar* original_kid = g_strdup_printf("%s==", keyID);
-            g_autofree gchar* original_key_val = g_strdup_printf("%s==", keyValue);
-            gchar* key_val = g_strdelimit(original_key_val, "-", '+');
-            key_val = g_strdelimit(original_key_val, "_", '/');
-
-            gchar* kid = g_strdelimit(original_kid, "-", '+');
-            kid = g_strdelimit(original_kid, "_", '/');
-
-            auto* session = reinterpret_cast<OpenCDMSession*>(userData);
-            session->cacheKey(kid, key_val);
-        },
-        this);
     m_callbacks->keys_updated_callback(this, m_userData);
     return ERROR_NONE;
 }
