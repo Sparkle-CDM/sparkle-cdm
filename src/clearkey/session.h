@@ -4,8 +4,8 @@
 
 #include "common.h"
 #include "system.h"
-#include <gcrypt.h>
 #include <map>
+#include <openssl/evp.h>
 #include <vector>
 
 struct OpenCDMSession {
@@ -51,6 +51,5 @@ private:
     std::map<std::string, std::pair<KeyStatus, std::string>> m_keyStatusMap;
     uint8_t m_iv[16];
     std::vector<uint8_t> m_buffer;
-    gcry_cipher_hd_t m_handle;
-    bool m_open{ false };
+    EVP_CIPHER_CTX* m_evpCtx { nullptr };
 };

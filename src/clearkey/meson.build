@@ -10,7 +10,7 @@ dependencies = [
   dependency('gstreamer-1.0'),
   dependency('gstreamer-base-1.0'),
   dependency('json-glib-1.0'),
-  dependency('libgcrypt'),
+  dependency('openssl'),
 ]
 
 sources = [

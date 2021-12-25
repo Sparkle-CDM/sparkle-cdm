@@ -300,9 +300,9 @@ OpenCDMError OpenCDMSession::remove()
 OpenCDMError OpenCDMSession::close()
 {
     GST_DEBUG("Closing session");
-    if (m_open) {
-        gcry_cipher_close(m_handle);
-        m_open = false;
+    if (m_evpCtx) {
+        EVP_CIPHER_CTX_free(m_evpCtx);
+        m_evpCtx = nullptr;
     }
     return ERROR_NONE;
 }
@@ -323,23 +323,26 @@ OpenCDMError OpenCDMSession::decrypt(GstBuffer* buffer, GstBuffer* subSample, co
     gst_buffer_map(IV, &ivMap, GST_MAP_READ);
     gst_buffer_map(keyID, &keyIdMap, GST_MAP_READ);
 
-    if (!m_open) {
-        if (gcry_error_t error = gcry_cipher_open(&m_handle, GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_CTR, GCRY_CIPHER_SECURE)) {
-            GST_ERROR("Unable to create decryption handle: %s", gpg_strerror(error));
-            goto out;
-        }
-        m_open = true;
-    }
-
     // Add padding to IV, filling 16 bytes.
     memcpy(m_iv, ivMap.data, (ivMap.size > 16 ? 16 : ivMap.size));
     if (ivMap.size < 16) {
         memset(&(m_iv[ivMap.size]), 0, 16 - ivMap.size);
     }
 
-    if (gcry_error_t error = gcry_cipher_setctr(m_handle, m_iv, 16)) {
-        GST_ERROR("Unable to configure counter vector: %s", gpg_strerror(error));
-        goto out;
+    int outSize = 0;
+
+    auto* alg = EVP_aes_128_ctr();
+    if (!m_evpCtx) {
+        m_evpCtx = EVP_CIPHER_CTX_new();
+        if (!m_evpCtx) {
+            GST_ERROR("Ctx init");
+            goto out;
+        }
+        if (!EVP_CipherInit_ex(m_evpCtx, alg, NULL, NULL, NULL, 0 /* encrypt */)) {
+            GST_ERROR("Init failure");
+            goto out;
+        }
+        EVP_CIPHER_CTX_set_padding(m_evpCtx, 0);
     }
 
     {
@@ -350,16 +353,17 @@ OpenCDMError OpenCDMSession::decrypt(GstBuffer* buffer, GstBuffer* subSample, co
             goto out;
         }
         const auto& keyValue = statusAndValue->second.second;
-        if (gcry_error_t error = gcry_cipher_setkey(m_handle, keyValue.c_str(), keyValue.length())) {
-            GST_ERROR("Unable to configure decryption key: %s", gpg_strerror(error));
+        if (!EVP_CipherInit_ex(m_evpCtx, alg, NULL, reinterpret_cast<const unsigned char*>(keyValue.c_str()), m_iv, 0)) {
+            GST_ERROR("Init failure");
             goto out;
         }
     }
 
     GST_TRACE("Decrypting with session %s", m_id);
     if (!subSampleCount) {
-        if (gcry_error_t error = gcry_cipher_decrypt(m_handle, bufferMap.data, bufferMap.size, 0, 0)) {
-            GST_ERROR("Unable to decrypt data: %s", gpg_strerror(error));
+        if (!EVP_CipherUpdate(m_evpCtx, bufferMap.data,
+                &outSize, bufferMap.data, bufferMap.size)) {
+            GST_ERROR("Unable to decrypt data");
             goto out;
         }
         ret = ERROR_NONE;
@@ -394,8 +398,9 @@ OpenCDMError OpenCDMSession::decrypt(GstBuffer* buffer, GstBuffer* subSample, co
             position += nBytesClear;
             sampleIndex++;
             if (nBytesEncrypted) {
-                if (gcry_error_t error = gcry_cipher_decrypt(m_handle, bufferMap.data + position, nBytesEncrypted, 0, 0)) {
-                    GST_ERROR("Unable to decrypt subsample data: %s", gpg_strerror(error));
+                if (!EVP_CipherUpdate(m_evpCtx, bufferMap.data + position,
+                        &outSize, bufferMap.data + position, nBytesEncrypted)) {
+                    GST_ERROR("Unable to decrypt subsample data");
                     goto out2;
                 }
             }
