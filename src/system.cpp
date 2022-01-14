@@ -21,10 +21,18 @@ static GHashTable* s_sessions = nullptr;
 
 static void closePlugins()
 {
-    g_hash_table_destroy(s_modules);
-    g_hash_table_destroy(s_systems);
-    g_hash_table_destroy(s_sessions);
-    g_list_free_full(s_plugins, (GDestroyNotify)g_module_close);
+    if (s_modules)
+        g_hash_table_destroy(s_modules);
+    s_modules = nullptr;
+    if (s_systems)
+        g_hash_table_destroy(s_systems);
+    s_systems = nullptr;
+    if (s_sessions)
+        g_hash_table_destroy(s_sessions);
+    s_sessions = nullptr;
+    if (s_plugins)
+        g_list_free_full(s_plugins, (GDestroyNotify)g_module_close);
+    s_plugins = nullptr;
 }
 
 static void registerModule(const gchar* path)
