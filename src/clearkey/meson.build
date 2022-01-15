@@ -6,7 +6,6 @@ endif
 dependencies = [
   dependency('gio-2.0'),
   dependency('glib-2.0'),
-  dependency('gpg-error'),
   dependency('gstreamer-1.0'),
   dependency('gstreamer-base-1.0'),
   dependency('json-glib-1.0'),
