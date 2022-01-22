@@ -32,7 +32,7 @@ pkg = import('pkgconfig')
 
 pkg.generate(sparkle_cdm_lib,
   description: 'Sparkle-CDM library',
-         name: 'ocdm',
+         name: 'thunder',
      filebase: 'thunder',
       subdirs: include_subdir,
      requires: sparkle_cdm_deps,
