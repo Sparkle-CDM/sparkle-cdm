@@ -25,16 +25,17 @@ sparkle_cdm_lib = shared_library('ocdm',
   install: true,
 )
 
-install_headers(sparkle_cdm_headers, subdir: join_paths('WPEFramework', 'ocdm'))
+include_subdir = join_paths('WPEFramework', 'ocdm')
+install_headers(sparkle_cdm_headers, subdir: include_subdir)
 
 pkg = import('pkgconfig')
 
 pkg.generate(sparkle_cdm_lib,
-  description: 'Sparkle CDM library',
-         name: 'thunder',
+  description: 'Sparkle-CDM library',
+         name: 'ocdm',
      filebase: 'thunder',
-      subdirs: 'thunder',
-     requires: 'glib-2.0',
+      subdirs: include_subdir,
+     requires: sparkle_cdm_deps,
 )
 
 sparkle_cdm_dep = declare_dependency(link_with: sparkle_cdm_lib)
