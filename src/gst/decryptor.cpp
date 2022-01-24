@@ -502,12 +502,21 @@ retry:
   auto result = opencdm_gstreamer_session_decrypt (self->session, buffer,
       subSamplesBuffer, subSampleCount, ivBuffer, keyIDBuffer, 0);
 
-  if (result == ERROR_INVALID_SESSION && self->pending_session) {
-    GST_DEBUG_OBJECT (self, "Session expired. Switching to pending session");
-    opencdm_destruct_session (self->session);
-    self->session = self->pending_session;
-    self->pending_session = nullptr;
-    self->provisioned = false;
+  if (result == ERROR_INVALID_SESSION) {
+    if (self->pending_session) {
+      GST_DEBUG_OBJECT (self, "Session expired. Switching to pending session");
+      opencdm_destruct_session (self->session);
+      self->session = self->pending_session;
+      self->pending_session = nullptr;
+    } else {
+      GST_DEBUG_OBJECT (self, "Session expired, waiting for pending session");
+    }
+    {
+      GstMapInfo info GST_MAP_INFO_INIT;
+      gst_buffer_map (keyIDBuffer, &info, GST_MAP_READ);
+      self->provisioned = opencdm_session_status (self->session, info.data, info.size) == Usable;
+      gst_buffer_unmap (keyIDBuffer, &info);
+    }
     goto retry;
   }
 
