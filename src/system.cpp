@@ -132,7 +132,7 @@ void cacheSession(struct OpenCDMSession* session, GModule* module)
 GModule* moduleForSession(const struct OpenCDMSession* session)
 {
     auto* module = (GModule*)g_hash_table_lookup(s_sessions, session);
-    GST_DEBUG("Module lookup result for session %p: %s", session,
+    GST_TRACE("Module lookup result for session %p: %s", session,
         module ? g_module_name(module) : "");
     if (!module)
       GST_ERROR("Module not found for session %p", session);
@@ -408,7 +408,7 @@ OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session,
     GstBuffer* IV, GstBuffer* keyID,
     uint32_t initWithLast15)
 {
-    GST_DEBUG("opencdm_gstreamer_session_decrypt: %p", session);
+    GST_TRACE("opencdm_gstreamer_session_decrypt: %p", session);
     auto* module = moduleForSession(session);
     DecryptSessionFunc decrypt_session;
     if (!g_module_symbol(module, "opencdm_gstreamer_session_decrypt",
