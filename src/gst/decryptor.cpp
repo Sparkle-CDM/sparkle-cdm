@@ -26,8 +26,8 @@
  *
  * 0. Application should listen on the bus for synchronous `need-context`
  * messages asking for `drm-preferred-decryption-system-id` context types. For
- * now as we support only Widevine, the corresponding UUID should be set on the
- * `decryption-system-id` field of the context structure.
+ * now as we support Widevine and ClearKey, the corresponding UUID should be set
+ * on the `decryption-system-id` field of the context structure.
  *
  * 1. (optional) Parse custom ContentProtection payload that might be included
  * in the manifest. This payload is included in the `spkl-protection` structure
