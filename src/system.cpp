@@ -321,9 +321,8 @@ OpenCDMError opencdm_destruct_session(struct OpenCDMSession* session)
             (gpointer*)&destruct_session))
         return ERROR_FAIL;
 
-    auto result = destruct_session(session);
     unregisterSession(session);
-    return result;
+    return destruct_session(session);
 }
 
 const char* opencdm_session_id(const struct OpenCDMSession* session)
