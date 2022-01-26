@@ -142,12 +142,28 @@ spklProcessChallenge (G_GNUC_UNUSED struct OpenCDMSession *session,
 }
 
 static void
+renewSession (SparkleDecryptor *self)
+{
+  gsize pssh_size;
+  gconstpointer pssh_data;
+
+  // We might need to close the pending session before attempting to construct a
+  // new one?
+  g_return_if_fail (self->pending_session == nullptr);
+
+  GST_DEBUG_OBJECT (self, "Renewing session");
+  self->clearBufferNotified = FALSE;
+  pssh_data = g_bytes_get_data (self->pssh, &pssh_size);
+  opencdm_construct_session (self->system, Temporary, "cenc",
+                             (const uint8_t *) pssh_data, pssh_size, nullptr, 0,
+                             &self->sessionCallbacks, self, &self->pending_session);
+}
+
+static void
 spklKeyUpdate (struct OpenCDMSession *session, void *userData,
     const uint8_t keyId[], const uint8_t length)
 {
   auto *self = SPKL_DECRYPTOR (userData);
-  gsize pssh_size;
-  gconstpointer pssh_data;
 
   GST_MEMDUMP_OBJECT (self, "keyID:", keyId, length);
   auto status = opencdm_session_status (session, keyId, length);
@@ -160,17 +176,8 @@ spklKeyUpdate (struct OpenCDMSession *session, void *userData,
     g_mutex_unlock (&self->cdmAttachmentMutex);
   }
 
-  if (status != Expired)
-    return;
-
-  GST_DEBUG_OBJECT (self, "Renewing session");
-  self->clearBufferNotified = FALSE;
-  // We might need to close the pending session before attempting to construct a
-  // new one?
-  pssh_data = g_bytes_get_data (self->pssh, &pssh_size);
-  opencdm_construct_session (self->system, Temporary, "cenc",
-      (const uint8_t *) pssh_data, pssh_size, nullptr, 0,
-      &self->sessionCallbacks, self, &self->pending_session);
+  if (status == Expired)
+    renewSession(self);
 }
 
 static void
@@ -508,14 +515,16 @@ retry:
       opencdm_destruct_session (self->session);
       self->session = self->pending_session;
       self->pending_session = nullptr;
+      {
+        GstMapInfo info GST_MAP_INFO_INIT;
+        gst_buffer_map (keyIDBuffer, &info, GST_MAP_READ);
+        self->provisioned = opencdm_session_status (self->session, info.data, info.size) == Usable;
+        gst_buffer_unmap (keyIDBuffer, &info);
+      }
     } else {
       GST_DEBUG_OBJECT (self, "Session expired, waiting for pending session");
-    }
-    {
-      GstMapInfo info GST_MAP_INFO_INIT;
-      gst_buffer_map (keyIDBuffer, &info, GST_MAP_READ);
-      self->provisioned = opencdm_session_status (self->session, info.data, info.size) == Usable;
-      gst_buffer_unmap (keyIDBuffer, &info);
+      renewSession (self);
+      self->provisioned = false;
     }
     goto retry;
   }
