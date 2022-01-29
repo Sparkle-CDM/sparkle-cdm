@@ -34,8 +34,7 @@ pkg.generate(sparkle_cdm_lib,
   description: 'Sparkle-CDM library',
          name: 'thunder',
      filebase: 'thunder',
-      subdirs: include_subdir,
-     requires: sparkle_cdm_deps,
+      subdirs: include_subdir
 )
 
 sparkle_cdm_dep = declare_dependency(link_with: sparkle_cdm_lib)
