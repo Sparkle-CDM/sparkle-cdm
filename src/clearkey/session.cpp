@@ -5,8 +5,25 @@
 #include "open_cdm_adapter.h"
 #include <gst/base/gstbytereader.h>
 #include <json-glib/json-glib.h>
+#include <glib.h>
 
 #define GST_CAT_DEFAULT cdm_debug_category
+
+class GMutexHolder {
+public:
+    GMutexHolder(GMutex& mutex)
+        : m(mutex)
+    {
+        g_mutex_lock(&m);
+    }
+    ~GMutexHolder()
+    {
+        g_mutex_unlock(&m);
+    }
+
+private:
+    GMutex& m;
+};
 
 OpenCDMSession::OpenCDMSession(OpenCDMSystem* system,
     const std::string& initDataType,
@@ -27,6 +44,8 @@ OpenCDMSession::OpenCDMSession(OpenCDMSystem* system,
     UNUSED_PARAM(cbCustomData);
     UNUSED_PARAM(system);
 
+    g_mutex_init(&m_mutex);
+
     static uint32_t gId = 0;
     m_id = g_strdup_printf("ck%u", gId++);
 
@@ -36,6 +55,7 @@ OpenCDMSession::OpenCDMSession(OpenCDMSystem* system,
 OpenCDMSession::~OpenCDMSession()
 {
     GST_DEBUG("Destroying session %p", this);
+    g_mutex_clear(&m_mutex);
     g_free(m_id);
 }
 
@@ -319,6 +339,8 @@ OpenCDMError OpenCDMSession::decrypt(GstBuffer* buffer, GstBuffer* subSample, co
 
     OpenCDMError ret = ERROR_FAIL;
     GstMapInfo bufferMap, ivMap, keyIdMap;
+    GMutexHolder lock(m_mutex);
+
     gst_buffer_map(buffer, &bufferMap, GST_MAP_READWRITE);
     gst_buffer_map(IV, &ivMap, GST_MAP_READ);
     gst_buffer_map(keyID, &keyIdMap, GST_MAP_READ);

@@ -52,4 +52,5 @@ private:
     uint8_t m_iv[16];
     std::vector<uint8_t> m_buffer;
     EVP_CIPHER_CTX* m_evpCtx { nullptr };
+    GMutex m_mutex; // For basic MT-safety in decrypt().
 };
