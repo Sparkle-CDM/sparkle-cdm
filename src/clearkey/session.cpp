@@ -338,10 +338,6 @@ OpenCDMError OpenCDMSession::decrypt(GstBuffer* buffer, GstBuffer* subSample, co
             GST_ERROR("Ctx init");
             goto out;
         }
-        if (!EVP_CipherInit_ex(m_evpCtx, alg, NULL, NULL, NULL, 0 /* encrypt */)) {
-            GST_ERROR("Init failure");
-            goto out;
-        }
         EVP_CIPHER_CTX_set_padding(m_evpCtx, 0);
     }
 
