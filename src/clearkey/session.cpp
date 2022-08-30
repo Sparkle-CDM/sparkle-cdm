@@ -70,6 +70,12 @@ KeyStatus opencdm_session_status(const struct OpenCDMSession* session, const uin
     return session->keyStatus(key_id);
 }
 
+uint32_t opencdm_session_has_key_id(struct OpenCDMSession* session, const uint8_t length, const uint8_t keyId[])
+{
+    std::string key_id(keyId, keyId + length);
+    return session->hasKeyID(key_id);
+}
+
 OpenCDMError opencdm_session_load(struct OpenCDMSession* session)
 {
     return session->load();
