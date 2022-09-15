@@ -33,7 +33,8 @@ OpenCDMSession::OpenCDMSession(OpenCDMSystem* system,
     const LicenseType licenseType,
     OpenCDMSessionCallbacks* callbacks,
     void* userData)
-    : m_callbacks(callbacks)
+    : m_system(system)
+    , m_callbacks(callbacks)
     , m_userData(userData)
     , m_licenseType(licenseType)
     , m_initDataType(initDataType)
@@ -42,7 +43,6 @@ OpenCDMSession::OpenCDMSession(OpenCDMSystem* system,
 {
     UNUSED_PARAM(pbCustomData);
     UNUSED_PARAM(cbCustomData);
-    UNUSED_PARAM(system);
 
     g_mutex_init(&m_mutex);
 
@@ -50,11 +50,14 @@ OpenCDMSession::OpenCDMSession(OpenCDMSystem* system,
     m_id = g_strdup_printf("ck%u", gId++);
 
     processInitData();
+    m_system->registerSession(this);
 }
 
 OpenCDMSession::~OpenCDMSession()
 {
     GST_DEBUG("Destroying session %p", this);
+    std::string id(m_id, m_id + strlen(m_id));
+    m_system->unregisterSession(id);
     g_mutex_clear(&m_mutex);
     g_free(m_id);
 }
