@@ -40,6 +40,7 @@ private:
     void processInitData();
     gchar* encode_kid(const guint8* d, gsize size);
 
+    OpenCDMSystem* m_system;
     gchar* m_id;
     OpenCDMSessionCallbacks* m_callbacks;
     void* m_userData;
