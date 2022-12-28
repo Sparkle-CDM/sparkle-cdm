@@ -93,6 +93,14 @@ KeyStatus opencdm_session_status(const struct OpenCDMSession* session,
   return Usable;
 }
 
+uint32_t opencdm_session_has_key_id(struct OpenCDMSession* session,
+    const uint8_t length, const uint8_t keyId[]) {
+  LOG("%p", session);
+  UNUSED(length);
+  UNUSED(keyId);
+  return true;
+}
+
 OpenCDMError opencdm_session_load(struct OpenCDMSession* session) {
   LOG("%p", session);
   return ERROR_NONE;
