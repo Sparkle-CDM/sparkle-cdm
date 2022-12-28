@@ -183,6 +183,9 @@ typedef const char* (*GetSessionIdFunc)(const struct OpenCDMSession* session);
 typedef KeyStatus (*GetSessionStatusFunc)(const struct OpenCDMSession* session,
     const uint8_t* keyId,
     const uint8_t length);
+typedef uint32_t (*SessionHasKeyIdFunc)(struct OpenCDMSession* session,
+        const uint8_t length,
+        const uint8_t keyId[]);
 typedef OpenCDMError (*LoadSessionFunc)(struct OpenCDMSession* session);
 typedef OpenCDMError (*UpdateSessionFunc)(struct OpenCDMSession* session,
     const uint8_t keyMessage[],
@@ -348,6 +351,21 @@ KeyStatus opencdm_session_status(const struct OpenCDMSession* session,
         return InternalError;
 
     return get_session_status(session, keyId, length);
+}
+
+uint32_t opencdm_session_has_key_id(struct OpenCDMSession* session,
+        const uint8_t length, const uint8_t keyId[])
+{
+    GST_DEBUG("opencdm_session_has_key_id: %p", session);
+    auto* module = moduleForSession(session);
+    SessionHasKeyIdFunc session_has_key_id;
+    if (!g_module_symbol(module, "opencdm_session_has_key_id",
+                (gpointer *) &session_has_key_id)) {
+        GST_ERROR("opencdm_session_has_key_id: %p is missing implementation",
+                session);
+        return 0;
+    }
+    return session_has_key_id(session, length, keyId);
 }
 
 OpenCDMError opencdm_session_load(struct OpenCDMSession* session)
