@@ -53,11 +53,19 @@ static const gchar* initCheck()
         return error ? error->message : "Initialization failed";
     }
   }
-    GST_DEBUG_CATEGORY_INIT(sparkle_cdm_debug_category, "sprklcdm", 0,
+  GST_DEBUG_CATEGORY_INIT(sparkle_cdm_debug_category, "sprklcdm", 0,
         "Sparkle CDM");
-    const char* path = g_getenv("WEBKIT_SPARKLE_CDM_MODULE_PATH");
-    if (path)
-        registerModule(path);
+  auto module_paths = g_getenv("WEBKIT_SPARKLE_CDM_MODULE_PATH");
+  if (module_paths) {
+      auto paths = g_strsplit(module_paths, G_SEARCHPATH_SEPARATOR_S, 0);
+      for (auto path = paths; *path; path++) {
+          if (g_str_equal(*path, "")) {
+              continue;
+          }
+          registerModule(*path);
+      }
+      g_strfreev(paths);
+  }
 
     GDir* plugins_dir = g_dir_open(EXTERNAL_MODULE_PATH, 0, NULL);
     if (plugins_dir) {
