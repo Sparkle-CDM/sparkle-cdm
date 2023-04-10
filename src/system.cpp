@@ -193,6 +193,7 @@ typedef OpenCDMError (*DecryptSessionFunc)(struct OpenCDMSession* session,
     GstBuffer* buffer,
     GstBuffer* subSamples,
     const uint32_t subSampleCount,
+    OpenCDMEncryptionScheme encryptionScheme,
     GstBuffer* IV, GstBuffer* keyID,
     uint32_t initWithLast15);
 
@@ -404,6 +405,7 @@ OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session,
     GstBuffer* buffer,
     GstBuffer* subSamples,
     const uint32_t subSampleCount,
+    OpenCDMEncryptionScheme encryptionScheme,
     GstBuffer* IV, GstBuffer* keyID,
     uint32_t initWithLast15)
 {
@@ -414,6 +416,6 @@ OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session,
             (gpointer*)&decrypt_session))
         return ERROR_FAIL;
 
-    return decrypt_session(session, buffer, subSamples, subSampleCount, IV, keyID,
-        initWithLast15);
+    return decrypt_session(session, buffer, subSamples, subSampleCount,
+        encryptionScheme, IV, keyID, initWithLast15);
 }

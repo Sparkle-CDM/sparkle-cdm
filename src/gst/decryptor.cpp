@@ -474,6 +474,10 @@ transformInPlace (GstBaseTransform * base, GstBuffer * buffer)
     }
   }
 
+  OpenCDMEncryptionScheme encryptionScheme = OPENCDM_ENCRYPTION_SCHEME_AES_CTR;
+  if (!g_strcmp0 (gst_structure_get_string (protectionMeta->info, "cipher-mode"), "cbcs"))
+    encryptionScheme = OPENCDM_ENCRYPTION_SCHEME_AES_CBC;
+
   value = gst_structure_get_value (protectionMeta->info, "kid");
   if (!value) {
     GST_ERROR_OBJECT (self, "Failed to get key id for buffer");
@@ -507,7 +511,7 @@ retry:
   }
 
   auto result = opencdm_gstreamer_session_decrypt (self->session, buffer,
-      subSamplesBuffer, subSampleCount, ivBuffer, keyIDBuffer, 0);
+      subSamplesBuffer, subSampleCount, encryptionScheme, ivBuffer, keyIDBuffer, 0);
 
   if (result == ERROR_INVALID_SESSION) {
     if (self->pending_session) {

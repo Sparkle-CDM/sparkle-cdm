@@ -153,6 +153,15 @@ typedef enum {
 } OpenCDMBool;
 
 /**
+ * OpenCDM encryption schemes supported by CENC 3.0.
+ */
+typedef enum {
+    OPENCDM_ENCRYPTION_SCHEME_CLEAR = 0,
+    OPENCDM_ENCRYPTION_SCHEME_AES_CTR, // AES-CTR, for use with cenc and cens modes
+    OPENCDM_ENCRYPTION_SCHEME_AES_CBC  // AES-CBC, for use with cbc1 and cbcs modes
+} OpenCDMEncryptionScheme;
+
+/**
  * Registered callbacks with OCDM sessions.
  */
 typedef struct {
@@ -344,7 +353,6 @@ EXTERNAL OpenCDMError opencdm_system_set_server_certificate(
  *
  * Creates an instance of \ref OpenCDMSession using initialization data.
  * \param system Instance of \ref OpenCDMAccessor.
- * \param keySystem DRM system to create the session for.
  * \param licenseType DRM specifc signed integer selecting License Type (e.g.
  * "Limited Duration" for PlayReady).
  * \param initDataType Type of data passed in \ref initData.
@@ -488,6 +496,8 @@ EXTERNAL OpenCDMError opencdm_session_close(struct OpenCDMSession* session);
  * \param encrypted Buffer containing encrypted data. If applicable, decrypted
  * data will be stored here after this call returns.
  * \param encryptedLength Length of encrypted data buffer (in bytes).
+ * \param encryptionScheme The encryption scheme, for example AES_CTR for the
+ * normal CENC mode or AES-CBC for the CBCS mode.
  * \param IV Initial vector (IV) used during decryption. Can be NULL, in that
  * case and IV of all zeroes is assumed.
  * \param IVLength Length of IV buffer (in bytes).
@@ -501,6 +511,7 @@ EXTERNAL OpenCDMError opencdm_session_close(struct OpenCDMSession* session);
 EXTERNAL OpenCDMError opencdm_session_decrypt(struct OpenCDMSession* session,
     uint8_t encrypted[],
     const uint32_t encryptedLength,
+    OpenCDMEncryptionScheme encryptionScheme,
     const uint8_t* IV, uint16_t IVLength,
     const uint8_t* keyId, const uint16_t keyIdLength,
     uint32_t initWithLast15 = 0);
@@ -508,6 +519,7 @@ EXTERNAL OpenCDMError opencdm_session_decrypt(struct OpenCDMSession* session,
 EXTERNAL OpenCDMError opencdm_session_decrypt(struct OpenCDMSession* session,
     uint8_t encrypted[],
     const uint32_t encryptedLength,
+    OpenCDMEncryptionScheme encryptionScheme,
     const uint8_t* IV, uint16_t IVLength,
     const uint8_t* keyId, const uint16_t keyIdLength,
     uint32_t initWithLast15);
