@@ -31,7 +31,7 @@ static void closePlugins()
         g_hash_table_destroy(s_sessions);
     s_sessions = nullptr;
     if (s_plugins)
-        g_list_free_full(s_plugins, (GDestroyNotify)g_module_close);
+        g_list_free_full(s_plugins, [](void* d) { g_module_close((GModule*)d); });
     s_plugins = nullptr;
 }
 
