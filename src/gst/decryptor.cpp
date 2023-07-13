@@ -409,7 +409,7 @@ transformCaps (GstBaseTransform * base, GstPadDirection direction,
     self->currentSrcCaps = gst_caps_ref (transformedCaps);
     gst_base_transform_update_src_caps (base, transformedCaps);
   } else if (!gst_caps_is_equal (self->currentSrcCaps, transformedCaps)) {
-    self->currentSrcCaps = gst_caps_ref (transformedCaps);
+    gst_caps_replace (&self->currentSrcCaps, transformedCaps);
     gst_base_transform_update_src_caps (base, transformedCaps);
   }
 
