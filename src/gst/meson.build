@@ -11,12 +11,7 @@ sprkl_gst_lib = shared_library('gstsprkl', ['decryptor.cpp', 'plugin.cpp', 'sprk
                          install_dir: get_option('prefix') / get_option('libdir') / 'gstreamer-1.0',
                          install: true)
 
-sparkle_cdm_gst_headers = []
-foreach f: ['sprklcapsmeta.h', 'sprklgst.h']
-  sparkle_cdm_gst_headers += 'sprkl' / f
-endforeach
-
-install_headers(sparkle_cdm_gst_headers)
+install_headers('sprkl/sprklcapsmeta.h', 'sprkl/sprklgst.h', subdir : 'sprkl')
 
 pkg = import('pkgconfig')
 
