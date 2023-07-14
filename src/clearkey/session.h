@@ -32,7 +32,7 @@ public:
     OpenCDMError remove();
     OpenCDMError close();
     OpenCDMError destruct();
-    OpenCDMError decrypt(GstBuffer* buffer, GstBuffer* subSample, const uint32_t subSampleCount, OpenCDMEncryptionScheme, GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15);
+    OpenCDMError decrypt(GstBuffer* buffer, GstBuffer* subSample, const uint32_t subSampleCount, GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15);
 
     void cacheKey(const gchar* keyID, const gchar* keyValue);
 

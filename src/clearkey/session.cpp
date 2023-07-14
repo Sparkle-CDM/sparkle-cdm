@@ -98,9 +98,9 @@ OpenCDMError opencdm_destruct_session(struct OpenCDMSession* session)
     return session->destruct();
 }
 
-OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session, GstBuffer* buffer, GstBuffer* subSample, const uint32_t subSampleCount, OpenCDMEncryptionScheme encryptionScheme, GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15)
+OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session, GstBuffer* buffer, GstBuffer* subSample, const uint32_t subSampleCount, GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15)
 {
-    return session->decrypt(buffer, subSample, subSampleCount, encryptionScheme, IV, keyID, initWithLast15);
+    return session->decrypt(buffer, subSample, subSampleCount, IV, keyID, initWithLast15);
 }
 
 gchar* OpenCDMSession::encode_kid(const guint8* d, gsize size)
@@ -333,7 +333,7 @@ OpenCDMError OpenCDMSession::destruct()
     return close();
 }
 
-OpenCDMError OpenCDMSession::decrypt(GstBuffer* buffer, GstBuffer* subSample, const uint32_t subSampleCount, OpenCDMEncryptionScheme, GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15)
+OpenCDMError OpenCDMSession::decrypt(GstBuffer* buffer, GstBuffer* subSample, const uint32_t subSampleCount, GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15)
 {
     UNUSED_PARAM(initWithLast15);
 
@@ -353,7 +353,6 @@ OpenCDMError OpenCDMSession::decrypt(GstBuffer* buffer, GstBuffer* subSample, co
 
     int outSize = 0;
 
-    // TODO: Handle encryption scheme properly.
     auto* alg = EVP_aes_128_ctr();
     if (!m_evpCtx) {
         m_evpCtx = EVP_CIPHER_CTX_new();
