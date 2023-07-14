@@ -39,14 +39,12 @@ extern "C" {
  * \param buffer Gstreamer buffer containing encrypted data and related meta data. If applicable, decrypted data will be stored here after this call returns.
  * \param subSample Gstreamer buffer containing subsamples size which has been parsed from protection meta data.
  * \param subSampleCount count of subsamples
- * \param encryptionScheme The encryption scheme, for example AES_CTR for the normal CENC mode or AES-CBC for the CBCS mode.
  * \param IV Gstreamer buffer containing initial vector (IV) used during decryption.
  * \param keyID Gstreamer buffer containing keyID to use for decryption
- * \param initWithLast15 Whether decryption context needs to be initialized with last 15 bytes. Currently this only applies to PlayReady DRM.
  * \return Zero on success, non-zero on error.
  */
 EXTERNAL OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session, GstBuffer* buffer, GstBuffer* subSample, const uint32_t subSampleCount,
-    OpenCDMEncryptionScheme encryptionScheme, GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15);
+    GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15);
 
 #ifdef __cplusplus
 }

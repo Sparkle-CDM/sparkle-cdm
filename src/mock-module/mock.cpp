@@ -121,14 +121,12 @@ OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session,
                                                GstBuffer* buffer,
                                                GstBuffer* subSamples,
                                                const uint32_t subSampleCount,
-                                               OpenCDMEncryptionScheme encryptionScheme,
                                                GstBuffer* IV, GstBuffer* keyID,
                                                uint32_t initWithLast15) {
   LOG("%p", session);
   UNUSED(buffer);
   UNUSED(subSamples);
   UNUSED(subSampleCount);
-  UNUSED(encryptionScheme);
   UNUSED(IV);
   UNUSED(keyID);
   UNUSED(initWithLast15);
