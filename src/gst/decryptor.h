@@ -21,7 +21,6 @@ struct SparkleDecryptor {
     GstBaseTransform parent;
 
     GstEvent* protectionEvent;
-    GstCaps* currentSrcCaps;
 
     struct OpenCDMSystem* system;
     struct OpenCDMSession* session;

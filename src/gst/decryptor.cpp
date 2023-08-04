@@ -323,7 +323,6 @@ spkl_decryptor_init (SparkleDecryptor * self)
       self, NULL);
   self->parsingPssh = FALSE;
 
-  self->currentSrcCaps = nullptr;
   g_cond_init (&self->cdmAttachmentCondition);
   g_mutex_init (&self->cdmAttachmentMutex);
 }
@@ -399,18 +398,6 @@ transformCaps (GstBaseTransform * base, GstPadDirection direction,
         GST_CAPS_INTERSECT_FIRST);
     gst_caps_unref (transformedCaps);
     transformedCaps = intersection;
-  }
-
-  GST_DEBUG_OBJECT (base, "current src caps: %" GST_PTR_FORMAT,
-      self->currentSrcCaps);
-  GST_DEBUG_OBJECT (base, "transformedCaps:  %" GST_PTR_FORMAT,
-      transformedCaps);
-  if (!self->currentSrcCaps) {
-    self->currentSrcCaps = gst_caps_ref (transformedCaps);
-    gst_base_transform_update_src_caps (base, transformedCaps);
-  } else if (!gst_caps_is_equal (self->currentSrcCaps, transformedCaps)) {
-    gst_caps_replace (&self->currentSrcCaps, transformedCaps);
-    gst_base_transform_update_src_caps (base, transformedCaps);
   }
 
   GST_DEBUG_OBJECT (base, "returning %" GST_PTR_FORMAT, transformedCaps);
@@ -744,9 +731,6 @@ spkl_decryptor_finalize (GObject * object)
     opencdm_destruct_system (self->system);
     self->system = nullptr;
   }
-
-  if (self->currentSrcCaps)
-    gst_caps_unref (self->currentSrcCaps);
 
   if (self->pssh)
     g_bytes_unref (self->pssh);
