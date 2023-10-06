@@ -360,6 +360,11 @@ transformCaps (GstBaseTransform * base, GstPadDirection direction,
       gst_structure_set_name (outgoingStructure,
           gst_structure_get_string (outgoingStructure, "original-media-type"));
 
+      // Filter out flac related fields because they might trigger spurious caps
+      // changes leading to downstream flacparse reset and flacdec lost sync
+      // errors.
+      gst_structure_remove_fields (outgoingStructure, "streamheader", "rate", nullptr);
+
       // Filter out the DRM related fields from the down-stream caps.
       gst_structure_remove_fields (outgoingStructure, "protection-system",
           "original-media-type", "encryption-algorithm",
