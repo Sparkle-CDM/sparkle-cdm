@@ -47,25 +47,25 @@ static void registerModule(const gchar* path)
 
 static const gchar* initCheck()
 {
-  if (!gst_is_initialized()) {
-    g_autoptr(GError) error = nullptr;
-    if (!gst_init_check(nullptr, nullptr, &error)) {
-        return error ? error->message : "Initialization failed";
+    if (!gst_is_initialized()) {
+        g_autoptr(GError) error = nullptr;
+        if (!gst_init_check(nullptr, nullptr, &error)) {
+            return error ? error->message : "Initialization failed";
+        }
     }
-  }
-  GST_DEBUG_CATEGORY_INIT(sparkle_cdm_debug_category, "sprklcdm", 0,
+    GST_DEBUG_CATEGORY_INIT(sparkle_cdm_debug_category, "sprklcdm", 0,
         "Sparkle CDM");
-  auto module_paths = g_getenv("WEBKIT_SPARKLE_CDM_MODULE_PATH");
-  if (module_paths) {
-      auto paths = g_strsplit(module_paths, G_SEARCHPATH_SEPARATOR_S, 0);
-      for (auto path = paths; *path; path++) {
-          if (g_str_equal(*path, "")) {
-              continue;
-          }
-          registerModule(*path);
-      }
-      g_strfreev(paths);
-  }
+    auto module_paths = g_getenv("WEBKIT_SPARKLE_CDM_MODULE_PATH");
+    if (module_paths) {
+        auto paths = g_strsplit(module_paths, G_SEARCHPATH_SEPARATOR_S, 0);
+        for (auto path = paths; *path; path++) {
+            if (g_str_equal(*path, "")) {
+                continue;
+            }
+            registerModule(*path);
+        }
+        g_strfreev(paths);
+    }
 
     GDir* plugins_dir = g_dir_open(EXTERNAL_MODULE_PATH, 0, NULL);
     if (plugins_dir) {
@@ -97,7 +97,7 @@ GModule* moduleForKeySystem(const char* keySystem)
     GST_DEBUG("Module lookup result for %s: %s", keySystem,
         module ? g_module_name(module) : "");
     if (!module)
-      GST_ERROR("Module not found for key system %s", keySystem);
+        GST_ERROR("Module not found for key system %s", keySystem);
     return module;
 }
 
@@ -117,7 +117,7 @@ GModule* moduleForSystem(struct OpenCDMSystem* system)
     GST_DEBUG("Module lookup result for system %p: %s", system,
         module ? g_module_name(module) : "");
     if (!module)
-      GST_ERROR("Module not found");
+        GST_ERROR("Module not found");
     return module;
 }
 
@@ -143,7 +143,7 @@ GModule* moduleForSession(const struct OpenCDMSession* session)
     GST_TRACE("Module lookup result for session %p: %s", session,
         module ? g_module_name(module) : "");
     if (!module)
-      GST_ERROR("Module not found for session %p", session);
+        GST_ERROR("Module not found for session %p", session);
     return module;
 }
 void unregisterSession(struct OpenCDMSession* session)
@@ -192,8 +192,8 @@ typedef KeyStatus (*GetSessionStatusFunc)(const struct OpenCDMSession* session,
     const uint8_t* keyId,
     const uint8_t length);
 typedef uint32_t (*SessionHasKeyIdFunc)(struct OpenCDMSession* session,
-        const uint8_t length,
-        const uint8_t keyId[]);
+    const uint8_t length,
+    const uint8_t keyId[]);
 typedef OpenCDMError (*LoadSessionFunc)(struct OpenCDMSession* session);
 typedef OpenCDMError (*UpdateSessionFunc)(struct OpenCDMSession* session,
     const uint8_t keyMessage[],
@@ -362,15 +362,15 @@ KeyStatus opencdm_session_status(const struct OpenCDMSession* session,
 }
 
 uint32_t opencdm_session_has_key_id(struct OpenCDMSession* session,
-        const uint8_t length, const uint8_t keyId[])
+    const uint8_t length, const uint8_t keyId[])
 {
     GST_DEBUG("opencdm_session_has_key_id: %p", session);
     auto* module = moduleForSession(session);
     SessionHasKeyIdFunc session_has_key_id;
     if (!g_module_symbol(module, "opencdm_session_has_key_id",
-                (gpointer *) &session_has_key_id)) {
+            (gpointer*)&session_has_key_id)) {
         GST_ERROR("opencdm_session_has_key_id: %p is missing implementation",
-                session);
+            session);
         return 0;
     }
     return session_has_key_id(session, length, keyId);
