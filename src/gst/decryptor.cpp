@@ -345,7 +345,6 @@ transformCaps (GstBaseTransform * base, GstPadDirection direction,
       (direction == GST_PAD_SRC) ? "src" : "sink", caps, filter);
 
   GstCaps *transformedCaps = gst_caps_new_empty ();
-  auto *self = SPKL_DECRYPTOR (base);
 
   unsigned size = gst_caps_get_size (caps);
   for (unsigned i = 0; i < size; ++i) {
