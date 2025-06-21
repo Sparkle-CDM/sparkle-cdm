@@ -207,6 +207,11 @@ typedef OpenCDMError (*DecryptSessionFunc)(struct OpenCDMSession* session,
     GstBuffer* IV, GstBuffer* keyID,
     uint32_t initWithLast15);
 
+typedef OpenCDMError (*DecryptBufferFunc)(struct OpenCDMSession* session,
+    GstBuffer* buffer, GstCaps* caps, GstBuffer* subSamples,
+    const uint32_t subSampleCount,
+    GstBuffer* IV, GstBuffer* keyID);
+
 OpenCDMError opencdm_is_type_supported(const char keySystem[],
     const char mimeType[])
 {
@@ -442,4 +447,55 @@ OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session,
 
     return decrypt_session(session, buffer, subSamples, subSampleCount, IV, keyID,
         initWithLast15);
+}
+
+OpenCDMError opencdm_gstreamer_session_decrypt_buffer(struct OpenCDMSession* session, GstBuffer* buffer, GstCaps* caps)
+{
+    if (!session)
+        return ERROR_INVALID_SESSION;
+
+    GST_TRACE("opencdm_gstreamer_session_decrypt_buffer: %p", session);
+    auto* module = moduleForSession(session);
+    DecryptBufferFunc decrypt_session;
+    if (!g_module_symbol(module, "opencdm_gstreamer_session_decrypt_v2",
+            (gpointer*)&decrypt_session))
+        return ERROR_FAIL;
+
+    const GValue* value;
+    unsigned subSampleCount = 0;
+    GstBuffer* subSample = nullptr;
+    GstBuffer* IV = nullptr;
+    GstBuffer* keyID = nullptr;
+
+    GstProtectionMeta* protectionMeta = reinterpret_cast<GstProtectionMeta*>(gst_buffer_get_protection_meta(buffer));
+    if (!protectionMeta) {
+        GST_TRACE("opencdm_gstreamer_session_decrypt_buffer: Missing Protection Metadata.");
+        return ERROR_INVALID_DECRYPT_BUFFER;
+    }
+
+    gst_structure_get_uint(protectionMeta->info, "subsample_count", &subSampleCount);
+    if (subSampleCount) {
+        value = gst_structure_get_value(protectionMeta->info, "subsamples");
+        if (!value) {
+            GST_TRACE("opencdm_gstreamer_session_decrypt_buffer: No subsample buffer.");
+            return ERROR_INVALID_DECRYPT_BUFFER;
+        }
+        subSample = gst_value_get_buffer(value);
+    }
+
+    value = gst_structure_get_value(protectionMeta->info, "iv");
+    if (!value) {
+        GST_TRACE("opencdm_gstreamer_session_decrypt_buffer: Missing IV buffer.");
+        return ERROR_INVALID_DECRYPT_BUFFER;
+    }
+    IV = gst_value_get_buffer(value);
+
+    value = gst_structure_get_value(protectionMeta->info, "kid");
+    if (!value) {
+        GST_TRACE("opencdm_gstreamer_session_decrypt_buffer: Missing KeyId buffer.");
+        return ERROR_INVALID_DECRYPT_BUFFER;
+    }
+    keyID = gst_value_get_buffer(value);
+
+    return decrypt_session(session, buffer, caps, subSample, subSampleCount, IV, keyID);
 }

@@ -112,6 +112,11 @@ OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session, G
     return session->decrypt(buffer, subSample, subSampleCount, IV, keyID, initWithLast15);
 }
 
+OpenCDMError opencdm_gstreamer_session_decrypt_v2(struct OpenCDMSession* session, GstBuffer* buffer, GstCaps*, GstBuffer* subSample, const uint32_t subSampleCount, GstBuffer* IV, GstBuffer* keyID)
+{
+    return session->decrypt(buffer, subSample, subSampleCount, IV, keyID, 0);
+}
+
 gchar* OpenCDMSession::encode_kid(const guint8* d, gsize size)
 {
     g_autofree gchar* encoded = g_base64_encode(d, size);

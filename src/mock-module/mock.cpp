@@ -140,3 +140,19 @@ OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session,
   UNUSED(initWithLast15);
   return ERROR_NONE;
 }
+
+OpenCDMError opencdm_gstreamer_session_decrypt_v2(struct OpenCDMSession* session,
+                                                  GstBuffer* buffer,
+                                                  GstCaps*,
+                                                  GstBuffer* subSample,
+                                                  const uint32_t subSampleCount,
+                                                  GstBuffer* IV, GstBuffer* keyID)
+{
+  LOG("%p", session);
+  UNUSED(buffer);
+  UNUSED(subSample);
+  UNUSED(subSampleCount);
+  UNUSED(IV);
+  UNUSED(keyID);
+  return ERROR_NONE;
+}
