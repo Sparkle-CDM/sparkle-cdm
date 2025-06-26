@@ -45,12 +45,11 @@ static void registerModule(const gchar* path)
         GST_WARNING("Error loading %s: %s", path, g_module_error());
 }
 
-static const gchar* initCheck()
+static void initCheck(GError** error)
 {
     if (!gst_is_initialized()) {
-        g_autoptr(GError) error = nullptr;
-        if (!gst_init_check(nullptr, nullptr, &error)) {
-            return error ? error->message : "Initialization failed";
+        if (!gst_init_check(nullptr, nullptr, error)) {
+            return;
         }
     }
     GST_DEBUG_CATEGORY_INIT(sparkle_cdm_debug_category, "sprklcdm", 0,
@@ -79,7 +78,6 @@ static const gchar* initCheck()
         }
         g_dir_close(plugins_dir);
     }
-    return nullptr;
 }
 
 void cacheKeySystemCheck(GModule* module, const char* keySystem)
@@ -158,7 +156,13 @@ extern "C" {
 G_MODULE_EXPORT const gchar* g_module_check_init(GModule* self)
 {
     UNUSED_PARAM(self);
-    return initCheck();
+    GError* error = nullptr;
+    initCheck(&error);
+    if (error) {
+        g_printerr("Unable to initialize Sparkle-CDM. Error message: %s\n", error->message);
+    }
+    g_clear_error(&error);
+    return g_module_error();
 }
 
 G_MODULE_EXPORT void g_module_unload(GModule* self)
@@ -166,7 +170,7 @@ G_MODULE_EXPORT void g_module_unload(GModule* self)
     UNUSED_PARAM(self);
     closePlugins();
 }
-}
+} // extern "C"
 
 typedef OpenCDMError (*IsTypeSupportedFunc)(const char* keySystem,
     const char* mimeType);
