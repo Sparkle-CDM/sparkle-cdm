@@ -242,6 +242,8 @@ struct OpenCDMSystem* opencdm_create_system(const char keySystem[])
 {
     GST_DEBUG("opencdm_create_system: %s", keySystem);
     auto* module = moduleForKeySystem(keySystem);
+    if (!module)
+        return nullptr;
     CreateSystemFunc create_system;
     if (!g_module_symbol(module, "opencdm_create_system",
             (gpointer*)&create_system))
@@ -256,6 +258,10 @@ OpenCDMError opencdm_destruct_system(struct OpenCDMSystem* system)
 {
     GST_DEBUG("opencdm_destruct_system: %p", system);
     auto* module = moduleForSystem(system);
+    if (!module) {
+        unregisterSystem(system);
+        return ERROR_NONE;
+    }
     DestructSystemFunc destruct_system;
     if (!g_module_symbol(module, "opencdm_destruct_system",
             (gpointer*)&destruct_system))
@@ -270,6 +276,8 @@ OpenCDMBool opencdm_system_supports_server_certificate(
 {
     GST_DEBUG("opencdm_system_supports_server_certificate: %p", system);
     auto* module = moduleForSystem(system);
+    if (!module)
+        return OPENCDM_BOOL_FALSE;
     SupportsServerCertificateFunc supports_server_certificate;
     if (!g_module_symbol(module, "opencdm_system_supports_server_certificate",
             (gpointer*)&supports_server_certificate))
@@ -284,6 +292,8 @@ OpenCDMError opencdm_system_set_server_certificate(struct OpenCDMSystem* system,
     GST_DEBUG("opencdm_system_set_server_certificate: %p", system);
     GST_MEMDUMP("server certificate", serverCertificate, serverCertificateLength);
     auto* module = moduleForSystem(system);
+    if (!module)
+        return ERROR_FAIL;
     SetServerCertificateFunc set_server_certificate;
     if (!g_module_symbol(module, "opencdm_system_set_server_certificate",
             (gpointer*)&set_server_certificate))
@@ -300,6 +310,8 @@ struct OpenCDMSession* opencdm_get_system_session(struct OpenCDMSystem* system,
 {
     GST_DEBUG("opencdm_get_system_session: %p", system);
     auto* module = moduleForSystem(system);
+    if (!module)
+        return nullptr;
     GetSystemSessionFunc get_system_session;
     if (!g_module_symbol(module, "opencdm_get_system_session",
             (gpointer*)&get_system_session))
@@ -319,6 +331,8 @@ OpenCDMError opencdm_construct_session(
 {
     GST_DEBUG("opencdm_construct_session: %p", system);
     auto* module = moduleForSystem(system);
+    if (!module)
+        return ERROR_FAIL;
     ConstructSessionFunc construct_session;
     if (!g_module_symbol(module, "opencdm_construct_session",
             (gpointer*)&construct_session))
@@ -336,6 +350,10 @@ OpenCDMError opencdm_destruct_session(struct OpenCDMSession* session)
 {
     GST_DEBUG("opencdm_destruct_session: %p", session);
     auto* module = moduleForSession(session);
+    if (!module) {
+        unregisterSession(session);
+        return ERROR_NONE;
+    }
     DestructSessionFunc destruct_session;
     if (!g_module_symbol(module, "opencdm_destruct_session",
             (gpointer*)&destruct_session))
@@ -349,6 +367,8 @@ const char* opencdm_session_id(const struct OpenCDMSession* session)
 {
     GST_DEBUG("opencdm_session_id: %p", session);
     auto* module = moduleForSession(session);
+    if (!module)
+        return nullptr;
     GetSessionIdFunc get_session_id;
     if (!g_module_symbol(module, "opencdm_session_id",
             (gpointer*)&get_session_id))
@@ -362,6 +382,8 @@ KeyStatus opencdm_session_status(const struct OpenCDMSession* session,
 {
     GST_DEBUG("opencdm_session_status: %p", session);
     auto* module = moduleForSession(session);
+    if (!module)
+        return KeyStatus::InternalError;
     GetSessionStatusFunc get_session_status;
     if (!g_module_symbol(module, "opencdm_session_status",
             (gpointer*)&get_session_status))
@@ -375,6 +397,8 @@ uint32_t opencdm_session_has_key_id(struct OpenCDMSession* session,
 {
     GST_DEBUG("opencdm_session_has_key_id: %p", session);
     auto* module = moduleForSession(session);
+    if (!module)
+        return 0;
     SessionHasKeyIdFunc session_has_key_id;
     if (!g_module_symbol(module, "opencdm_session_has_key_id",
             (gpointer*)&session_has_key_id)) {
@@ -389,6 +413,8 @@ OpenCDMError opencdm_session_load(struct OpenCDMSession* session)
 {
     GST_DEBUG("opencdm_session_load: %p", session);
     auto* module = moduleForSession(session);
+    if (!module)
+        return ERROR_FAIL;
     LoadSessionFunc load_session;
     if (!g_module_symbol(module, "opencdm_session_load",
             (gpointer*)&load_session))
@@ -403,6 +429,8 @@ OpenCDMError opencdm_session_update(struct OpenCDMSession* session,
 {
     GST_DEBUG("opencdm_session_update: %p", session);
     auto* module = moduleForSession(session);
+    if (!module)
+        return ERROR_NONE;
     UpdateSessionFunc update_session;
     if (!g_module_symbol(module, "opencdm_session_update",
             (gpointer*)&update_session))
@@ -415,6 +443,8 @@ OpenCDMError opencdm_session_remove(struct OpenCDMSession* session)
 {
     GST_DEBUG("opencdm_session_remove: %p", session);
     auto* module = moduleForSession(session);
+    if (!module)
+        return ERROR_NONE;
     RemoveSessionFunc remove_session;
     if (!g_module_symbol(module, "opencdm_session_remove",
             (gpointer*)&remove_session))
@@ -427,6 +457,8 @@ OpenCDMError opencdm_session_close(struct OpenCDMSession* session)
 {
     GST_DEBUG("opencdm_session_close: %p", session);
     auto* module = moduleForSession(session);
+    if (!module)
+        return ERROR_NONE;
     CloseSessionFunc close_session;
     if (!g_module_symbol(module, "opencdm_session_close",
             (gpointer*)&close_session))
@@ -444,6 +476,8 @@ OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session,
 {
     GST_TRACE("opencdm_gstreamer_session_decrypt: %p", session);
     auto* module = moduleForSession(session);
+    if (!module)
+        return ERROR_NONE;
     DecryptSessionFunc decrypt_session;
     if (!g_module_symbol(module, "opencdm_gstreamer_session_decrypt",
             (gpointer*)&decrypt_session))
@@ -460,6 +494,8 @@ OpenCDMError opencdm_gstreamer_session_decrypt_buffer(struct OpenCDMSession* ses
 
     GST_TRACE("opencdm_gstreamer_session_decrypt_buffer: %p", session);
     auto* module = moduleForSession(session);
+    if (!module)
+        return ERROR_NONE;
     DecryptBufferFunc decrypt_session;
     if (!g_module_symbol(module, "opencdm_gstreamer_session_decrypt_v2",
             (gpointer*)&decrypt_session))
