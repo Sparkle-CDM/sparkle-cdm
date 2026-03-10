@@ -1,6 +1,6 @@
 
 if get_option('sample-player').enabled()
-  executable('sample-player', 'sample-player.c',
+  executable('sprkl-sample-player', 'sample-player.c',
              install : true,
              install_dir : get_option('prefix') / get_option('bindir'),
              dependencies : [dependency('glib-2.0'),
