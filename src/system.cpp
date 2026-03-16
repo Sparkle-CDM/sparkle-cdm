@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
 
+#include "sprkl-cdm.h"
+#include <cstdint>
 #include <glib.h>
 #include <gmodule.h>
 #include <gst/gst.h>
+#include <unordered_map>
 
 #include "open_cdm_adapter.h"
 #include "sparkle-cdm-config.h"
@@ -11,6 +14,75 @@ GST_DEBUG_CATEGORY(sparkle_cdm_debug_category);
 #define GST_CAT_DEFAULT sparkle_cdm_debug_category
 
 #define UNUSED_PARAM(x) (void)x
+
+struct OpenCDMSession {
+    OpenCDMSession(OpenCDMSystem* system, SparkleCDMSession* sprklSession);
+    ~OpenCDMSession();
+    OpenCDMSession(const OpenCDMSession&) = default;
+    OpenCDMSession(OpenCDMSession&&) = default;
+    OpenCDMSession& operator=(OpenCDMSession&&) = default;
+    OpenCDMSession& operator=(const OpenCDMSession&) = default;
+
+    SparkleCDMSession* sprklSession() const { return m_sprklSession; }
+
+private:
+    OpenCDMSystem* m_system;
+    SparkleCDMSession* m_sprklSession{ nullptr };
+};
+
+struct OpenCDMSystem {
+    OpenCDMSystem(const char system[], SparkleCDMSystem* sprklSystem)
+        : m_keySystem(system)
+        , m_sprklSystem(sprklSystem)
+    {
+    }
+    ~OpenCDMSystem() = default;
+    OpenCDMSystem(const OpenCDMSystem&) = default;
+    OpenCDMSystem(OpenCDMSystem&&) = default;
+    OpenCDMSystem& operator=(OpenCDMSystem&&) = default;
+    OpenCDMSystem& operator=(const OpenCDMSystem&) = default;
+
+    SparkleCDMSystem* sprklSystem() const { return m_sprklSystem; }
+
+    OpenCDMSession* getSystemSession(std::span<const uint8_t> keyId)
+    {
+        for (auto& it : m_sessions) {
+            if (it.second->sprklSession()->hasKeyId(keyId))
+                return it.second;
+        }
+        return nullptr;
+    }
+
+    void registerSession(OpenCDMSession* session)
+    {
+        m_sessions.insert({ session->sprklSession()->getId(), session });
+    }
+
+    void unregisterSession(const std::string& session_id)
+    {
+        auto result = m_sessions.find(session_id);
+        if (result != m_sessions.end())
+            m_sessions.erase(result);
+    }
+
+private:
+    std::string m_keySystem;
+    SparkleCDMSystem* m_sprklSystem{ nullptr };
+    std::unordered_map<std::string, OpenCDMSession*> m_sessions;
+};
+
+OpenCDMSession::OpenCDMSession(OpenCDMSystem* system, SparkleCDMSession* sprklSession)
+    : m_system(system)
+    , m_sprklSession(sprklSession)
+{
+    m_system->registerSession(this);
+    m_sprklSession->setParent(this);
+}
+
+OpenCDMSession::~OpenCDMSession()
+{
+    m_system->unregisterSession(m_sprklSession->getId());
+}
 
 namespace {
 
@@ -174,47 +246,9 @@ G_MODULE_EXPORT void g_module_unload(GModule* self)
 
 typedef OpenCDMError (*IsTypeSupportedFunc)(const char* keySystem,
     const char* mimeType);
-typedef struct OpenCDMSystem* (*CreateSystemFunc)(const char* keySystem);
-typedef OpenCDMError (*DestructSystemFunc)(struct OpenCDMSystem* system);
-typedef OpenCDMBool (*SupportsServerCertificateFunc)(
-    struct OpenCDMSystem* system);
-typedef struct OpenCDMSession* (*GetSystemSessionFunc)(
-    struct OpenCDMSystem* system, const uint8_t* keyId, const uint8_t length,
-    const uint32_t waitTime);
-typedef OpenCDMError (*SetServerCertificateFunc)(
-    struct OpenCDMSystem* system, const uint8_t serverCertificate[],
-    const uint16_t serverCertificateLength);
-typedef OpenCDMError (*ConstructSessionFunc)(
-    struct OpenCDMSystem* system, const LicenseType licenseType,
-    const char initDataType[], const uint8_t initData[],
-    const uint16_t initDataLength, const uint8_t CDMData[],
-    const uint16_t CDMDataLength, OpenCDMSessionCallbacks* callbacks,
-    void* userData, struct OpenCDMSession** session);
-typedef OpenCDMError (*DestructSessionFunc)(struct OpenCDMSession* session);
-typedef const char* (*GetSessionIdFunc)(const struct OpenCDMSession* session);
-typedef KeyStatus (*GetSessionStatusFunc)(const struct OpenCDMSession* session,
-    const uint8_t* keyId,
-    const uint8_t length);
-typedef uint32_t (*SessionHasKeyIdFunc)(struct OpenCDMSession* session,
-    const uint8_t length,
-    const uint8_t keyId[]);
-typedef OpenCDMError (*LoadSessionFunc)(struct OpenCDMSession* session);
-typedef OpenCDMError (*UpdateSessionFunc)(struct OpenCDMSession* session,
-    const uint8_t keyMessage[],
-    const uint16_t keyLength);
-typedef OpenCDMError (*RemoveSessionFunc)(struct OpenCDMSession* session);
-typedef OpenCDMError (*CloseSessionFunc)(struct OpenCDMSession* session);
-typedef OpenCDMError (*DecryptSessionFunc)(struct OpenCDMSession* session,
-    GstBuffer* buffer,
-    GstBuffer* subSamples,
-    const uint32_t subSampleCount,
-    GstBuffer* IV, GstBuffer* keyID,
-    uint32_t initWithLast15);
-
-typedef OpenCDMError (*DecryptBufferFunc)(struct OpenCDMSession* session,
-    GstBuffer* buffer, GstCaps* caps, GstBuffer* subSamples,
-    const uint32_t subSampleCount,
-    GstBuffer* IV, GstBuffer* keyID);
+typedef SparkleCDMSystem* (*CreateSystemFunc)(const char* keySystem);
+typedef OpenCDMError (*DestructSystemFunc)(SparkleCDMSystem* system);
+typedef OpenCDMError (*DestructSessionFunc)(SparkleCDMSession* session);
 
 OpenCDMError opencdm_is_type_supported(const char keySystem[],
     const char mimeType[])
@@ -245,11 +279,13 @@ struct OpenCDMSystem* opencdm_create_system(const char keySystem[])
     if (!module)
         return nullptr;
     CreateSystemFunc create_system;
-    if (!g_module_symbol(module, "opencdm_create_system",
-            (gpointer*)&create_system))
+    if (!g_module_symbol(module, "sprkl_cdm_create_system",
+            (gpointer*)&create_system)) {
+        GST_ERROR("sprkl_cdm_create_system function not found in %s module: %s", keySystem, g_module_error());
         return nullptr;
+    }
 
-    auto* system = create_system(keySystem);
+    auto system = new OpenCDMSystem(keySystem, create_system(keySystem));
     cacheSystem(system, module);
     return system;
 }
@@ -263,27 +299,21 @@ OpenCDMError opencdm_destruct_system(struct OpenCDMSystem* system)
         return ERROR_NONE;
     }
     DestructSystemFunc destruct_system;
-    if (!g_module_symbol(module, "opencdm_destruct_system",
-            (gpointer*)&destruct_system))
+    if (!g_module_symbol(module, "sprkl_cdm_destruct_system",
+            (gpointer*)&destruct_system)) {
+        GST_ERROR("sprkl_cdm_destruct_system function not found, %s", g_module_error());
         return ERROR_FAIL;
-
+    }
+    auto result = destruct_system(system->sprklSystem());
     unregisterSystem(system);
-    return destruct_system(system);
+    return result;
 }
 
 OpenCDMBool opencdm_system_supports_server_certificate(
     struct OpenCDMSystem* system)
 {
     GST_DEBUG("opencdm_system_supports_server_certificate: %p", system);
-    auto* module = moduleForSystem(system);
-    if (!module)
-        return OPENCDM_BOOL_FALSE;
-    SupportsServerCertificateFunc supports_server_certificate;
-    if (!g_module_symbol(module, "opencdm_system_supports_server_certificate",
-            (gpointer*)&supports_server_certificate))
-        return OPENCDM_BOOL_FALSE;
-
-    return supports_server_certificate(system);
+    return system->sprklSystem()->supportsServerCertificate();
 }
 
 OpenCDMError opencdm_system_set_server_certificate(struct OpenCDMSystem* system, const uint8_t serverCertificate[],
@@ -291,35 +321,21 @@ OpenCDMError opencdm_system_set_server_certificate(struct OpenCDMSystem* system,
 {
     GST_DEBUG("opencdm_system_set_server_certificate: %p", system);
     GST_MEMDUMP("server certificate", serverCertificate, serverCertificateLength);
-    auto* module = moduleForSystem(system);
-    if (!module)
-        return ERROR_FAIL;
-    SetServerCertificateFunc set_server_certificate;
-    if (!g_module_symbol(module, "opencdm_system_set_server_certificate",
-            (gpointer*)&set_server_certificate))
-        return ERROR_FAIL;
-
-    return set_server_certificate(system, serverCertificate,
-        serverCertificateLength);
+    std::span<const uint8_t> certificate{ serverCertificate, serverCertificateLength };
+    return system->sprklSystem()->setServerCertificate(certificate);
 }
 
 struct OpenCDMSession* opencdm_get_system_session(struct OpenCDMSystem* system,
     const uint8_t keyId[],
     const uint8_t length,
-    const uint32_t waitTime)
+    const uint32_t)
 {
     GST_DEBUG("opencdm_get_system_session: %p", system);
     auto* module = moduleForSystem(system);
     if (!module)
         return nullptr;
-    GetSystemSessionFunc get_system_session;
-    if (!g_module_symbol(module, "opencdm_get_system_session",
-            (gpointer*)&get_system_session))
-        return nullptr;
-
-    auto* session = get_system_session(system, keyId, length, waitTime);
-    cacheSession(session, module);
-    return session;
+    std::span<const uint8_t> key{ keyId, length };
+    return system->getSystemSession(key);
 }
 
 OpenCDMError opencdm_construct_session(
@@ -333,16 +349,15 @@ OpenCDMError opencdm_construct_session(
     auto* module = moduleForSystem(system);
     if (!module)
         return ERROR_FAIL;
-    ConstructSessionFunc construct_session;
-    if (!g_module_symbol(module, "opencdm_construct_session",
-            (gpointer*)&construct_session))
-        return ERROR_FAIL;
 
-    auto result = construct_session(system, licenseType, initDataType, initData,
-        initDataLength, CDMData, CDMDataLength,
-        callbacks, userData, session);
-    if (result == ERROR_NONE)
+    std::span<const uint8_t> init{ initData, initDataLength };
+    std::span<const uint8_t> cdmData{ CDMData, CDMDataLength };
+    SparkleCDMSession* sprklSession = nullptr;
+    auto result = system->sprklSystem()->constructSession(licenseType, initDataType, init, cdmData, callbacks, userData, &sprklSession);
+    if (result == ERROR_NONE) {
+        *session = new OpenCDMSession(system, sprklSession);
         cacheSession(*session, module);
+    }
     return result;
 }
 
@@ -352,75 +367,48 @@ OpenCDMError opencdm_destruct_session(struct OpenCDMSession* session)
     auto* module = moduleForSession(session);
     if (!module) {
         unregisterSession(session);
+        delete session;
         return ERROR_NONE;
     }
     DestructSessionFunc destruct_session;
-    if (!g_module_symbol(module, "opencdm_destruct_session",
-            (gpointer*)&destruct_session))
+    if (!g_module_symbol(module, "sprkl_cdm_destruct_session",
+            (gpointer*)&destruct_session)) {
+        GST_ERROR("sprkl_cdm_destruct_session function not found in %p module: %s", module, g_module_error());
         return ERROR_FAIL;
-
+    }
     unregisterSession(session);
-    return destruct_session(session);
+    auto result = destruct_session(session->sprklSession());
+    delete session;
+    return result;
 }
 
 const char* opencdm_session_id(const struct OpenCDMSession* session)
 {
     GST_DEBUG("opencdm_session_id: %p", session);
-    auto* module = moduleForSession(session);
-    if (!module)
-        return nullptr;
-    GetSessionIdFunc get_session_id;
-    if (!g_module_symbol(module, "opencdm_session_id",
-            (gpointer*)&get_session_id))
-        return nullptr;
-
-    return get_session_id(session);
+    const auto& id = session->sprklSession()->getId();
+    return id.c_str();
 }
 
 KeyStatus opencdm_session_status(const struct OpenCDMSession* session,
     const uint8_t keyId[], const uint8_t length)
 {
     GST_DEBUG("opencdm_session_status: %p", session);
-    auto* module = moduleForSession(session);
-    if (!module)
-        return KeyStatus::InternalError;
-    GetSessionStatusFunc get_session_status;
-    if (!g_module_symbol(module, "opencdm_session_status",
-            (gpointer*)&get_session_status))
-        return InternalError;
-
-    return get_session_status(session, keyId, length);
+    std::span<const uint8_t> id{ keyId, length };
+    return session->sprklSession()->status(id);
 }
 
 uint32_t opencdm_session_has_key_id(struct OpenCDMSession* session,
     const uint8_t length, const uint8_t keyId[])
 {
     GST_DEBUG("opencdm_session_has_key_id: %p", session);
-    auto* module = moduleForSession(session);
-    if (!module)
-        return 0;
-    SessionHasKeyIdFunc session_has_key_id;
-    if (!g_module_symbol(module, "opencdm_session_has_key_id",
-            (gpointer*)&session_has_key_id)) {
-        GST_ERROR("opencdm_session_has_key_id: %p is missing implementation",
-            session);
-        return 0;
-    }
-    return session_has_key_id(session, length, keyId);
+    std::span<const uint8_t> id{ keyId, length };
+    return session->sprklSession()->hasKeyId(id);
 }
 
 OpenCDMError opencdm_session_load(struct OpenCDMSession* session)
 {
     GST_DEBUG("opencdm_session_load: %p", session);
-    auto* module = moduleForSession(session);
-    if (!module)
-        return ERROR_FAIL;
-    LoadSessionFunc load_session;
-    if (!g_module_symbol(module, "opencdm_session_load",
-            (gpointer*)&load_session))
-        return ERROR_FAIL;
-
-    return load_session(session);
+    return session->sprklSession()->load();
 }
 
 OpenCDMError opencdm_session_update(struct OpenCDMSession* session,
@@ -428,43 +416,20 @@ OpenCDMError opencdm_session_update(struct OpenCDMSession* session,
     const uint16_t keyLength)
 {
     GST_DEBUG("opencdm_session_update: %p", session);
-    auto* module = moduleForSession(session);
-    if (!module)
-        return ERROR_NONE;
-    UpdateSessionFunc update_session;
-    if (!g_module_symbol(module, "opencdm_session_update",
-            (gpointer*)&update_session))
-        return ERROR_FAIL;
-
-    return update_session(session, keyMessage, keyLength);
+    std::span<const uint8_t> message{ keyMessage, keyLength };
+    return session->sprklSession()->update(message);
 }
 
 OpenCDMError opencdm_session_remove(struct OpenCDMSession* session)
 {
     GST_DEBUG("opencdm_session_remove: %p", session);
-    auto* module = moduleForSession(session);
-    if (!module)
-        return ERROR_NONE;
-    RemoveSessionFunc remove_session;
-    if (!g_module_symbol(module, "opencdm_session_remove",
-            (gpointer*)&remove_session))
-        return ERROR_FAIL;
-
-    return remove_session(session);
+    return session->sprklSession()->remove();
 }
 
 OpenCDMError opencdm_session_close(struct OpenCDMSession* session)
 {
     GST_DEBUG("opencdm_session_close: %p", session);
-    auto* module = moduleForSession(session);
-    if (!module)
-        return ERROR_NONE;
-    CloseSessionFunc close_session;
-    if (!g_module_symbol(module, "opencdm_session_close",
-            (gpointer*)&close_session))
-        return ERROR_FAIL;
-
-    return close_session(session);
+    return session->sprklSession()->close();
 }
 
 OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session,
@@ -475,16 +440,7 @@ OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session,
     uint32_t initWithLast15)
 {
     GST_TRACE("opencdm_gstreamer_session_decrypt: %p", session);
-    auto* module = moduleForSession(session);
-    if (!module)
-        return ERROR_NONE;
-    DecryptSessionFunc decrypt_session;
-    if (!g_module_symbol(module, "opencdm_gstreamer_session_decrypt",
-            (gpointer*)&decrypt_session))
-        return ERROR_FAIL;
-
-    return decrypt_session(session, buffer, subSamples, subSampleCount, IV, keyID,
-        initWithLast15);
+    return session->sprklSession()->decrypt(buffer, subSamples, subSampleCount, IV, keyID, initWithLast15);
 }
 
 OpenCDMError opencdm_gstreamer_session_decrypt_buffer(struct OpenCDMSession* session, GstBuffer* buffer, GstCaps* caps)
@@ -493,13 +449,6 @@ OpenCDMError opencdm_gstreamer_session_decrypt_buffer(struct OpenCDMSession* ses
         return ERROR_INVALID_SESSION;
 
     GST_TRACE("opencdm_gstreamer_session_decrypt_buffer: %p", session);
-    auto* module = moduleForSession(session);
-    if (!module)
-        return ERROR_NONE;
-    DecryptBufferFunc decrypt_session;
-    if (!g_module_symbol(module, "opencdm_gstreamer_session_decrypt_v2",
-            (gpointer*)&decrypt_session))
-        return ERROR_FAIL;
 
     const GValue* value;
     unsigned subSampleCount = 0;
@@ -537,5 +486,5 @@ OpenCDMError opencdm_gstreamer_session_decrypt_buffer(struct OpenCDMSession* ses
     }
     keyID = gst_value_get_buffer(value);
 
-    return decrypt_session(session, buffer, caps, subSample, subSampleCount, IV, keyID);
+    return session->sprklSession()->decryptBuffer(buffer, caps, subSample, subSampleCount, IV, keyID);
 }

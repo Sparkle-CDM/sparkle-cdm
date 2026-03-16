@@ -7,32 +7,34 @@
 #include <map>
 #include <openssl/evp.h>
 #include <vector>
+#include "sprkl-cdm.h"
 
-struct OpenCDMSession {
+class CKCDMSession final : public SparkleCDMSession {
 public:
-    OpenCDMSession(OpenCDMSystem* system,
-        const std::string& initDataType,
-        const uint8_t* pbInitData, const uint16_t cbInitData,
-        const uint8_t* pbCustomData,
-        const uint16_t cbCustomData,
+    CKCDMSession(const char initDataType[],
+                 std::span<const uint8_t> initData,
+                 std::span<const uint8_t> customData,
         const LicenseType licenseType,
         OpenCDMSessionCallbacks* callbacks,
         void* userData);
 
-    ~OpenCDMSession();
+    ~CKCDMSession();
 
-    const char* id() const { return m_id; }
+    const std::string& getId() const final { return m_id; }
+    KeyStatus status(std::span<const uint8_t> keyId) final;
+    uint32_t hasKeyId(std::span<const uint8_t> keyId) final;
+    OpenCDMError load() final;
+    OpenCDMError update(std::span<const uint8_t> message) final;
+    OpenCDMError remove() final;
+    OpenCDMError close() final;
+    OpenCDMError decrypt(GstBuffer* buffer, GstBuffer* subSamples, const uint32_t subSampleCount,
+                         GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15) final;
+    OpenCDMError decryptBuffer(GstBuffer* buffer, GstCaps* caps, GstBuffer* subSamples,
+                               const uint32_t subSampleCount, GstBuffer* IV, GstBuffer* keyID) final;
+
     LicenseType licenseType() const { return m_licenseType; }
 
-    KeyStatus keyStatus(const std::string& key_id) const;
-    bool hasKeyID(const std::string& key_id) const;
-
-    OpenCDMError load();
-    OpenCDMError update(const std::string& response);
-    OpenCDMError remove();
-    OpenCDMError close();
     OpenCDMError destruct();
-    OpenCDMError decrypt(GstBuffer* buffer, GstBuffer* subSample, const uint32_t subSampleCount, GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15);
 
     void cacheKey(const gchar* keyID, const gchar* keyValue);
 
@@ -40,14 +42,12 @@ private:
     void processInitData();
     gchar* encode_kid(const guint8* d, gsize size);
 
-    OpenCDMSystem* m_system;
-    gchar* m_id;
+  std::string m_id;
     OpenCDMSessionCallbacks* m_callbacks;
     void* m_userData;
     LicenseType m_licenseType;
     std::string m_initDataType;
-    const uint8_t* m_pbInitData;
-    const uint16_t m_cbInitData;
+    std::span<const uint8_t> m_initData;
 
     std::map<std::string, std::pair<KeyStatus, std::string>> m_keyStatusMap;
     uint8_t m_iv[16];

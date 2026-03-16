@@ -9,9 +9,13 @@ sparkle_cdm_sources = [
   'system.cpp',
 ]
 
-sparkle_cdm_headers = [
+ocdm_headers = [
   'open_cdm.h',
   'open_cdm_adapter.h'
+]
+
+sparkle_cdm_headers = [
+  'sprkl-cdm.h'
 ]
 
 sparkle_cdm_deps = [
@@ -25,8 +29,11 @@ sparkle_cdm_lib = shared_library('ocdm',
   install: true,
 )
 
-include_subdir = join_paths('WPEFramework', 'ocdm')
-install_headers(sparkle_cdm_headers, subdir: include_subdir)
+ocdm_include_subdir = join_paths('WPEFramework', 'ocdm')
+install_headers(ocdm_headers, subdir: ocdm_include_subdir)
+
+include_dir = 'sprkl'
+install_headers(sparkle_cdm_headers, subdir: include_dir)
 
 pkg = import('pkgconfig')
 
@@ -34,7 +41,7 @@ pkg.generate(sparkle_cdm_lib,
   description: 'Sparkle-CDM library',
          name: 'thunder',
      filebase: 'thunder',
-      subdirs: include_subdir
+      subdirs: [ocdm_include_subdir, include_dir]
 )
 
 sparkle_cdm_dep = declare_dependency(link_with: sparkle_cdm_lib)

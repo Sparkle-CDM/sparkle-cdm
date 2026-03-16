@@ -3,21 +3,19 @@
 #pragma once
 
 #include "common.h"
-#include "session.h"
+#include "sprkl-cdm.h"
 #include <unordered_map>
+#include <span>
+#include <string>
 
-struct OpenCDMSystem {
-    OpenCDMSystem();
-    OpenCDMSystem(const OpenCDMSystem&) = default;
-    OpenCDMSystem(OpenCDMSystem&&) = default;
-    OpenCDMSystem& operator=(OpenCDMSystem&&) = default;
-    OpenCDMSystem& operator=(const OpenCDMSystem&) = default;
-    ~OpenCDMSystem();
+class CKCDMSession;
 
-    void registerSession(OpenCDMSession*);
-    void unregisterSession(const std::string& session_id);
-    OpenCDMSession* getSessionForKeyID(const std::string& key_id, const uint32_t waitTime);
+class CKCDMSystem final : public SparkleCDMSystem {
+public:
+    OpenCDMBool supportsServerCertificate() final;
+    OpenCDMError setServerCertificate(std::span<const uint8_t>) final;
+    OpenCDMError constructSession(const LicenseType, const char initDataType[], std::span<const uint8_t> initData, std::span<const uint8_t> cdmData, OpenCDMSessionCallbacks*, void*, SparkleCDMSession**) final;
 
 private:
-    std::unordered_map<std::string, OpenCDMSession*> m_sessions;
+    std::unordered_map<std::string, CKCDMSession*> m_sessions;
 };

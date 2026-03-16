@@ -2,7 +2,7 @@ project('sparkle-cdm', ['c', 'cpp'],
           version: '0.1.0',
     meson_version: '>= 0.58',
   default_options: [ 'warning_level=2',
-                     'cpp_std=c++17',
+                     'cpp_std=c++20',
                      'buildtype=debugoptimized'
                    ],
 )
@@ -15,7 +15,7 @@ config_h.set_quoted('EXTERNAL_MODULE_PATH', get_option('prefix') / get_option('l
 configure_file(output: 'sparkle-cdm-config.h',
         configuration: config_h)
 
-add_project_arguments(['-I' + meson.build_root()], language: 'cpp')
+add_project_arguments(['-I' + meson.project_build_root()], language: 'cpp')
 
 subdir('src')
 subdir('examples')

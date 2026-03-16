@@ -3,9 +3,11 @@
 #include "session.h"
 #include "open_cdm.h"
 #include "open_cdm_adapter.h"
+#include "sprkl-cdm.h"
+#include <glib.h>
 #include <gst/base/gstbytereader.h>
 #include <json-glib/json-glib.h>
-#include <glib.h>
+#include <sstream>
 
 #define GST_CAT_DEFAULT cdm_debug_category
 
@@ -25,99 +27,39 @@ private:
     GMutex& m;
 };
 
-OpenCDMSession::OpenCDMSession(OpenCDMSystem* system,
-    const std::string& initDataType,
-    const uint8_t* pbInitData, const uint16_t cbInitData,
-    const uint8_t* pbCustomData,
-    const uint16_t cbCustomData,
+CKCDMSession::CKCDMSession(
+    const char initDataType[],
+    std::span<const uint8_t> initData,
+    std::span<const uint8_t> customData,
     const LicenseType licenseType,
     OpenCDMSessionCallbacks* callbacks,
     void* userData)
-    : m_system(system)
-    , m_callbacks(callbacks)
+    : m_callbacks(callbacks)
     , m_userData(userData)
     , m_licenseType(licenseType)
     , m_initDataType(initDataType)
-    , m_pbInitData(pbInitData)
-    , m_cbInitData(cbInitData)
+    , m_initData(initData)
 {
-    UNUSED_PARAM(pbCustomData);
-    UNUSED_PARAM(cbCustomData);
+    UNUSED_PARAM(customData);
 
     g_mutex_init(&m_mutex);
 
     static uint32_t gId = 0;
-    m_id = g_strdup_printf("ck%u", gId++);
+    std::stringstream stream;
+    stream << "ck" << gId;
+    gId++;
+    m_id = stream.str();
 
     processInitData();
-    m_system->registerSession(this);
 }
 
-OpenCDMSession::~OpenCDMSession()
+CKCDMSession::~CKCDMSession()
 {
     GST_DEBUG("Destroying session %p", this);
-    std::string id(m_id, m_id + strlen(m_id));
-    m_system->unregisterSession(id);
     g_mutex_clear(&m_mutex);
-    g_free(m_id);
 }
 
-const char* opencdm_session_id(const struct OpenCDMSession* session)
-{
-    return session->id();
-}
-
-KeyStatus opencdm_session_status(const struct OpenCDMSession* session, const uint8_t keyId[], const uint8_t length)
-{
-    std::string key_id(keyId, keyId + length);
-    return session->keyStatus(key_id);
-}
-
-uint32_t opencdm_session_has_key_id(struct OpenCDMSession* session, const uint8_t length, const uint8_t keyId[])
-{
-    std::string key_id(keyId, keyId + length);
-    return session->hasKeyID(key_id);
-}
-
-OpenCDMError opencdm_session_load(struct OpenCDMSession* session)
-{
-    return session->load();
-}
-
-OpenCDMError opencdm_session_update(struct OpenCDMSession* session,
-    const uint8_t keyMessage[],
-    const uint16_t keyLength)
-{
-    std::string response(keyMessage, keyMessage + keyLength);
-    return session->update(response);
-}
-
-OpenCDMError opencdm_session_remove(struct OpenCDMSession* session)
-{
-    return session->remove();
-}
-
-OpenCDMError opencdm_session_close(struct OpenCDMSession* session)
-{
-    return session->close();
-}
-
-OpenCDMError opencdm_destruct_session(struct OpenCDMSession* session)
-{
-    return session->destruct();
-}
-
-OpenCDMError opencdm_gstreamer_session_decrypt(struct OpenCDMSession* session, GstBuffer* buffer, GstBuffer* subSample, const uint32_t subSampleCount, GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15)
-{
-    return session->decrypt(buffer, subSample, subSampleCount, IV, keyID, initWithLast15);
-}
-
-OpenCDMError opencdm_gstreamer_session_decrypt_v2(struct OpenCDMSession* session, GstBuffer* buffer, GstCaps*, GstBuffer* subSample, const uint32_t subSampleCount, GstBuffer* IV, GstBuffer* keyID)
-{
-    return session->decrypt(buffer, subSample, subSampleCount, IV, keyID, 0);
-}
-
-gchar* OpenCDMSession::encode_kid(const guint8* d, gsize size)
+gchar* CKCDMSession::encode_kid(const guint8* d, gsize size)
 {
     g_autofree gchar* encoded = g_base64_encode(d, size);
     encoded = g_strdelimit(encoded, "+", '-');
@@ -125,7 +67,7 @@ gchar* OpenCDMSession::encode_kid(const guint8* d, gsize size)
     return g_strndup(encoded, strlen(encoded) - 2);
 }
 
-void OpenCDMSession::processInitData()
+void CKCDMSession::processInitData()
 {
     const char* sessionType = "";
     switch (m_licenseType) {
@@ -145,7 +87,7 @@ void OpenCDMSession::processInitData()
         const guint8* data;
         guint8 keyCount = 0;
 
-        gst_byte_reader_init(&br, m_pbInitData, m_cbInitData);
+        gst_byte_reader_init(&br, m_initData.data(), m_initData.size());
         gst_byte_reader_skip(&br, 12);
         if (gst_byte_reader_get_data(&br, cencSystemIdSize, &data)) {
             if (memcmp(data, cencSystemId, cencSystemIdSize) == 0) {
@@ -172,7 +114,7 @@ void OpenCDMSession::processInitData()
     } else if (m_initDataType == "keyids") {
         g_autoptr(GError) error = nullptr;
         g_autoptr(JsonParser) parser = json_parser_new_immutable();
-        if (!json_parser_load_from_data(parser, reinterpret_cast<const gchar*>(m_pbInitData), m_cbInitData, &error)) {
+        if (!json_parser_load_from_data(parser, reinterpret_cast<const gchar*>(m_initData.data()), m_initData.size(), &error)) {
             GST_ERROR("KeyIDs loading failed: %s", error->message);
             return;
         }
@@ -186,7 +128,7 @@ void OpenCDMSession::processInitData()
             keys = g_list_append(keys, g_strndup(value, strlen(value)));
         }
     } else if (m_initDataType == "webm") {
-        gchar* encoded_kid = encode_kid(m_pbInitData, m_cbInitData);
+        gchar* encoded_kid = encode_kid(m_initData.data(), m_initData.size());
         keys = g_list_append(keys, encoded_kid);
     }
 
@@ -219,14 +161,15 @@ void OpenCDMSession::processInitData()
     GString* payload = g_string_new_len(typ, 7);
     payload = g_string_append_len(payload, jsonData, len);
     g_autoptr(GBytes) payloadBytes = g_string_free_to_bytes(payload);
-    m_callbacks->process_challenge_callback(this, m_userData, nullptr, reinterpret_cast<const uint8_t*>(g_bytes_get_data(payloadBytes, nullptr)), g_bytes_get_size(payloadBytes));
+    m_callbacks->process_challenge_callback(parent(), m_userData, nullptr, reinterpret_cast<const uint8_t*>(g_bytes_get_data(payloadBytes, nullptr)), g_bytes_get_size(payloadBytes));
 }
 
-KeyStatus OpenCDMSession::keyStatus(const std::string& keyId) const
+KeyStatus CKCDMSession::status(std::span<const uint8_t> keyId)
 {
     KeyStatus status = Expired;
     bool found = false;
-    auto lookupResult = m_keyStatusMap.find(keyId);
+    std::string key{ keyId.data(), keyId.data() + keyId.size() };
+    auto lookupResult = m_keyStatusMap.find(key);
     if (lookupResult != m_keyStatusMap.end()) {
         found = true;
         status = lookupResult->second.first;
@@ -235,24 +178,26 @@ KeyStatus OpenCDMSession::keyStatus(const std::string& keyId) const
     return status;
 }
 
-bool OpenCDMSession::hasKeyID(const std::string& key_id) const
+uint32_t CKCDMSession::hasKeyId(std::span<const uint8_t> key_id)
 {
-    return m_keyStatusMap.find(key_id) != m_keyStatusMap.end();
+    std::string key{ key_id.data(), key_id.data() + key_id.size() };
+    return m_keyStatusMap.find(key) != m_keyStatusMap.end();
 }
 
-OpenCDMError OpenCDMSession::load()
+OpenCDMError CKCDMSession::load()
 {
     GST_DEBUG("Loading session");
     return ERROR_NONE;
 }
 
-OpenCDMError OpenCDMSession::update(const std::string& response)
+OpenCDMError CKCDMSession::update(std::span<const uint8_t> message)
 {
-    GST_MEMDUMP("Updating session according to response", reinterpret_cast<const uint8_t*>(response.data()), response.size());
+    GST_MEMDUMP("Updating session according to response", message.data(), message.size());
 
+    std::string response(message.begin(), message.end());
     if (response.find("kids") != std::string::npos && m_licenseType != Temporary) {
         m_keyStatusMap.clear();
-        m_callbacks->keys_updated_callback(this, m_userData);
+        m_callbacks->keys_updated_callback(parent(), m_userData);
         return ERROR_NONE;
     }
 
@@ -298,7 +243,7 @@ OpenCDMError OpenCDMSession::update(const std::string& response)
                 gchar* kid = g_strdelimit(original_kid, "-", '+');
                 kid = g_strdelimit(original_kid, "_", '/');
 
-                auto* session = reinterpret_cast<OpenCDMSession*>(userData);
+                auto session = reinterpret_cast<CKCDMSession*>(userData);
                 session->cacheKey(kid, key_val);
             },
             this);
@@ -307,31 +252,32 @@ OpenCDMError OpenCDMSession::update(const std::string& response)
         if (error->code == JSON_PARSER_ERROR_INVALID_DATA)
             return ERROR_FAIL;
     }
-    m_callbacks->keys_updated_callback(this, m_userData);
+    m_callbacks->keys_updated_callback(parent(), m_userData);
     return ERROR_NONE;
 }
 
-void OpenCDMSession::cacheKey(const gchar* keyID, const gchar* keyValue)
+void CKCDMSession::cacheKey(const gchar* keyID, const gchar* keyValue)
 {
     gsize keyIDLen, keyValueLen;
-    gchar* decodedKeyID = reinterpret_cast<gchar*>(g_base64_decode(keyID, &keyIDLen));
-    gchar* decodedKeyValue = reinterpret_cast<gchar*>(g_base64_decode(keyValue, &keyValueLen));
+    g_autofree uint8_t* decodedKeyID = g_base64_decode(keyID, &keyIDLen);
+    g_autofree uint8_t* decodedKeyValue = g_base64_decode(keyValue, &keyValueLen);
+
+    GST_MEMDUMP("Caching key ID:", decodedKeyID, keyIDLen);
+    GST_MEMDUMP("Caching key value:", decodedKeyValue, keyValueLen);
 
     std::string kid{ decodedKeyID, decodedKeyID + keyIDLen };
     std::string val{ decodedKeyValue, decodedKeyValue + keyValueLen };
-    GST_MEMDUMP("Caching key ID:", reinterpret_cast<const uint8_t*>(kid.c_str()), kid.size());
-    GST_MEMDUMP("Caching key value:", reinterpret_cast<const uint8_t*>(val.c_str()), val.size());
     m_keyStatusMap.insert({ kid, { Usable, val } });
-    m_callbacks->key_update_callback(this, m_userData, reinterpret_cast<const uint8_t*>(kid.c_str()), kid.size());
+    m_callbacks->key_update_callback(parent(), m_userData, decodedKeyID, keyIDLen);
 }
 
-OpenCDMError OpenCDMSession::remove()
+OpenCDMError CKCDMSession::remove()
 {
     GST_DEBUG("Removing session");
     return ERROR_NONE;
 }
 
-OpenCDMError OpenCDMSession::close()
+OpenCDMError CKCDMSession::close()
 {
     GST_DEBUG("Closing session");
     if (m_evpCtx) {
@@ -341,13 +287,18 @@ OpenCDMError OpenCDMSession::close()
     return ERROR_NONE;
 }
 
-OpenCDMError OpenCDMSession::destruct()
+OpenCDMError CKCDMSession::destruct()
 {
     GST_DEBUG("Destructing session");
     return close();
 }
 
-OpenCDMError OpenCDMSession::decrypt(GstBuffer* buffer, GstBuffer* subSample, const uint32_t subSampleCount, GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15)
+OpenCDMError sprkl_cdm_destruct_session(SparkleCDMSession* session)
+{
+    return static_cast<CKCDMSession*>(session)->destruct();
+}
+
+OpenCDMError CKCDMSession::decrypt(GstBuffer* buffer, GstBuffer* subSample, const uint32_t subSampleCount, GstBuffer* IV, GstBuffer* keyID, uint32_t initWithLast15)
 {
     UNUSED_PARAM(initWithLast15);
 
@@ -391,7 +342,7 @@ OpenCDMError OpenCDMSession::decrypt(GstBuffer* buffer, GstBuffer* subSample, co
         }
     }
 
-    GST_TRACE("Decrypting with session %s", m_id);
+    GST_TRACE("Decrypting with session %s", m_id.c_str());
     if (!subSampleCount) {
         if (!EVP_CipherUpdate(m_evpCtx, bufferMap.data,
                 &outSize, bufferMap.data, bufferMap.size)) {
@@ -449,4 +400,10 @@ out:
     gst_buffer_unmap(IV, &ivMap);
     gst_buffer_unmap(keyID, &keyIdMap);
     return ret;
+}
+
+OpenCDMError CKCDMSession::decryptBuffer(GstBuffer* buffer, GstCaps*, GstBuffer* subSamples,
+    const uint32_t subSampleCount, GstBuffer* IV, GstBuffer* keyID)
+{
+    return decrypt(buffer, subSamples, subSampleCount, IV, keyID, 0);
 }

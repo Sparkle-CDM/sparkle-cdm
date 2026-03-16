@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include "open_cdm.h"
+#include "sprkl-cdm.h"
 #include "system.h"
 #include <mutex>
 
@@ -17,7 +18,7 @@ OpenCDMError opencdm_is_type_supported(const char keySystem[], const char mimeTy
     return ERROR_NONE;
 }
 
-struct OpenCDMSystem* opencdm_create_system(const char keySystem[])
+SparkleCDMSystem* sprkl_cdm_create_system(const char keySystem[])
 {
     g_return_val_if_fail(g_str_equal(keySystem, "org.w3.clearkey"), nullptr);
 
@@ -26,20 +27,13 @@ struct OpenCDMSystem* opencdm_create_system(const char keySystem[])
         GST_DEBUG_CATEGORY_INIT(cdm_debug_category, "sprklclearkey", 0, "W3C ClearKey decryption module");
     });
 
-    struct OpenCDMSystem* system = new OpenCDMSystem;
+    auto system = new CKCDMSystem;
     GST_DEBUG("System %p created", system);
-    return system;
+    return static_cast<SparkleCDMSystem*>(system);
 }
 
-OpenCDMError opencdm_destruct_system(struct OpenCDMSystem* system)
+OpenCDMError sprkl_cdm_destruct_system(SparkleCDMSystem* system)
 {
-    delete system;
+    delete static_cast<CKCDMSystem*>(system);
     return ERROR_NONE;
-}
-
-struct OpenCDMSession* opencdm_get_system_session(struct OpenCDMSystem* system, const uint8_t keyId[],
-    const uint8_t length, const uint32_t waitTime)
-{
-    std::string key_id(keyId, keyId + length);
-    return system->getSessionForKeyID(key_id, waitTime);
 }
