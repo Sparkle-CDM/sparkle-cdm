@@ -7,7 +7,7 @@
 #include <map>
 #include <openssl/evp.h>
 #include <vector>
-#include "sprkl-cdm.h"
+#include "sprkl/sprkl-cdm.h"
 
 class CKCDMSession final : public SparkleCDMSession {
 public:

@@ -2,7 +2,7 @@
 
 #include "common.h"
 #include "open_cdm.h"
-#include "sprkl-cdm.h"
+#include "sprkl/sprkl-cdm.h"
 #include "system.h"
 #include <mutex>
 

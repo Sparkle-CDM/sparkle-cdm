@@ -15,7 +15,7 @@ ocdm_headers = [
 ]
 
 sparkle_cdm_headers = [
-  'sprkl-cdm.h'
+  'sprkl/sprkl-cdm.h'
 ]
 
 sparkle_cdm_deps = [

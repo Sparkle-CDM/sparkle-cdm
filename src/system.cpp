@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-#include "sprkl-cdm.h"
+#include "sprkl/sprkl-cdm.h"
 #include <cstdint>
 #include <glib.h>
 #include <gmodule.h>

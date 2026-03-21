@@ -3,7 +3,7 @@
 #pragma once
 
 #include "common.h"
-#include "sprkl-cdm.h"
+#include "sprkl/sprkl-cdm.h"
 #include <unordered_map>
 #include <span>
 #include <string>

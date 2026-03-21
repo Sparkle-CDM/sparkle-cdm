@@ -5,7 +5,7 @@
 #include <string>
 
 #include "open_cdm.h"
-#include "sprkl-cdm.h"
+#include "sprkl/sprkl-cdm.h"
 
 #define UNUSED(v) (void)v
 #define LOG(fmt, ...) \

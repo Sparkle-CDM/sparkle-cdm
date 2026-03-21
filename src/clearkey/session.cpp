@@ -3,7 +3,7 @@
 #include "session.h"
 #include "open_cdm.h"
 #include "open_cdm_adapter.h"
-#include "sprkl-cdm.h"
+#include "sprkl/sprkl-cdm.h"
 #include <glib.h>
 #include <gst/base/gstbytereader.h>
 #include <json-glib/json-glib.h>
