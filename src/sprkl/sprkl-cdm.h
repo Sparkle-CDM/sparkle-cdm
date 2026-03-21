@@ -39,7 +39,7 @@ extern "C" {
 #endif
 
 EXTERNAL SparkleCDMSystem* sprkl_cdm_create_system(const char keySystem[]);
-EXTERNAL OpenCDMError sprk_cdm_destruct_system(SparkleCDMSystem*);
+EXTERNAL OpenCDMError sprkl_cdm_destruct_system(SparkleCDMSystem*);
 EXTERNAL OpenCDMError sprkl_cdm_destruct_session(SparkleCDMSession*);
 
 #ifdef __cplusplus
