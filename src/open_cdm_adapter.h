@@ -25,6 +25,9 @@
 struct _GstBuffer;
 typedef struct _GstBuffer GstBuffer;
 
+struct _GstCaps;
+typedef struct _GstCaps GstCaps;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
