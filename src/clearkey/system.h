@@ -18,4 +18,5 @@ public:
 
 private:
     std::unordered_map<std::string, CKCDMSession*> m_sessions;
+    unsigned m_sessionId { 0 };
 };

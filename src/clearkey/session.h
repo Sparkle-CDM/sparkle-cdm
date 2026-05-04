@@ -11,7 +11,7 @@
 
 class CKCDMSession final : public SparkleCDMSession {
 public:
-    CKCDMSession(const char initDataType[],
+    CKCDMSession(std::string id, const char initDataType[],
                  std::span<const uint8_t> initData,
                  std::span<const uint8_t> customData,
         const LicenseType licenseType,

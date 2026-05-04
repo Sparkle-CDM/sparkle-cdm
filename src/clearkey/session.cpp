@@ -7,7 +7,6 @@
 #include <glib.h>
 #include <gst/base/gstbytereader.h>
 #include <json-glib/json-glib.h>
-#include <sstream>
 
 #define GST_CAT_DEFAULT cdm_debug_category
 
@@ -27,14 +26,15 @@ private:
     GMutex& m;
 };
 
-CKCDMSession::CKCDMSession(
+CKCDMSession::CKCDMSession(std::string id,
     const char initDataType[],
     std::span<const uint8_t> initData,
     std::span<const uint8_t> customData,
     const LicenseType licenseType,
     OpenCDMSessionCallbacks* callbacks,
     void* userData)
-    : m_callbacks(callbacks)
+    : m_id(id)
+    , m_callbacks(callbacks)
     , m_userData(userData)
     , m_licenseType(licenseType)
     , m_initDataType(initDataType)
@@ -43,12 +43,6 @@ CKCDMSession::CKCDMSession(
     UNUSED_PARAM(customData);
 
     g_mutex_init(&m_mutex);
-
-    static uint32_t gId = 0;
-    std::stringstream stream;
-    stream << "ck" << gId;
-    gId++;
-    m_id = stream.str();
 
     processInitData();
 }
