@@ -5,7 +5,7 @@
 #include <glib.h>
 #include <gmodule.h>
 #include <gst/gst.h>
-#include <unordered_map>
+#include <unordered_set>
 
 #include "open_cdm_adapter.h"
 #include "sparkle-cdm-config.h"
@@ -46,29 +46,27 @@ struct OpenCDMSystem {
 
     OpenCDMSession* getSystemSession(std::span<const uint8_t> keyId)
     {
-        for (auto& it : m_sessions) {
-            if (it.second->sprklSession()->hasKeyId(keyId))
-                return it.second;
+        for (auto* session : m_sessions) {
+            if (session->sprklSession()->hasKeyId(keyId))
+                return session;
         }
         return nullptr;
     }
 
     void registerSession(OpenCDMSession* session)
     {
-        m_sessions.insert({ session->sprklSession()->getId(), session });
+        m_sessions.insert(session);
     }
 
-    void unregisterSession(const std::string& session_id)
+    void unregisterSession(OpenCDMSession* session)
     {
-        auto result = m_sessions.find(session_id);
-        if (result != m_sessions.end())
-            m_sessions.erase(result);
+        m_sessions.erase(session);
     }
 
 private:
     std::string m_keySystem;
     SparkleCDMSystem* m_sprklSystem{ nullptr };
-    std::unordered_map<std::string, OpenCDMSession*> m_sessions;
+    std::unordered_set<OpenCDMSession*> m_sessions;
 };
 
 OpenCDMSession::OpenCDMSession(OpenCDMSystem* system, SparkleCDMSession* sprklSession)
@@ -81,7 +79,7 @@ OpenCDMSession::OpenCDMSession(OpenCDMSystem* system, SparkleCDMSession* sprklSe
 
 OpenCDMSession::~OpenCDMSession()
 {
-    m_system->unregisterSession(m_sprklSession->getId());
+    m_system->unregisterSession(this);
 }
 
 namespace {
