@@ -307,6 +307,31 @@ OpenCDMError opencdm_destruct_system(struct OpenCDMSystem* system)
     return result;
 }
 
+OpenCDMError opencdm_system_supported_robustness(struct OpenCDMSystem* system, char*** robustness, uint16_t* count)
+{
+    GST_DEBUG("opencdm_system_supported_robustness: %p", system);
+
+    if (!system || !robustness || !count)
+        return ERROR_INVALID_ARG;
+
+    *robustness = nullptr;
+    *count = 0;
+
+    auto levels = system->sprklSystem()->robustnessLevels();
+    auto totalLevels = levels.size();
+    if (totalLevels) {
+      char** levelsValues = static_cast<char**>(calloc(totalLevels, sizeof(char*)));
+
+      for (auto it = levels.begin(); it != levels.end(); ++it) {
+        auto i = std::distance(levels.begin(), it);
+        levelsValues[i] = strdup(it->c_str());
+      }
+      *robustness = levelsValues;
+      *count = totalLevels;
+    }
+    return ERROR_NONE;
+}
+
 OpenCDMBool opencdm_system_supports_server_certificate(
     struct OpenCDMSystem* system)
 {

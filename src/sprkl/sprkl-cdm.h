@@ -5,6 +5,7 @@
 #include <open_cdm.h>
 #include <string>
 #include <span>
+#include <vector>
 
 class SparkleCDMSession {
 public:
@@ -32,6 +33,8 @@ public:
     virtual OpenCDMBool supportsServerCertificate() = 0;
     virtual OpenCDMError setServerCertificate(std::span<const uint8_t> certificate) = 0;
     virtual OpenCDMError constructSession(const LicenseType, const char initDataType[], std::span<const uint8_t> initData, std::span<const uint8_t> cdmData, OpenCDMSessionCallbacks*, void*, SparkleCDMSession**) = 0;
+
+    virtual std::vector<std::string> robustnessLevels() = 0;
 };
 
 #ifdef __cplusplus

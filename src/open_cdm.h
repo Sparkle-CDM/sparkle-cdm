@@ -223,6 +223,18 @@ EXTERNAL OpenCDMError opencdm_create_system_extended(const char keySystem[], str
 EXTERNAL OpenCDMError opencdm_destruct_system(struct OpenCDMSystem* system);
 
 /**
+ * Gets the robustness level supported by underlying CDM system.
+ *
+ * \param system \ref OpenCDMAccessor instance
+ * \param[out] robustness On success,set supported robustness levels(e.g:"SW_SECURE_DECODE,SW_SECURE_CRYPTO").
+ *     caller must free this bufferSet to NULL if the CDM reports no robustness levels.
+ * \param[out] count On success,return the length of the returned buffer.Set to 0 of no robustness
+ *     levels are reported.
+ * \return ERROR_NONE on success
+ */
+EXTERNAL OpenCDMError opencdm_system_supported_robustness(struct OpenCDMSystem* system, char*** robustness, uint16_t* count);
+
+/**
  * \brief Checks if a DRM system is supported.
  *
  * \param system Instance of \ref OpenCDMAccessor.

@@ -16,6 +16,8 @@ public:
     OpenCDMError setServerCertificate(std::span<const uint8_t>) final;
     OpenCDMError constructSession(const LicenseType, const char initDataType[], std::span<const uint8_t> initData, std::span<const uint8_t> cdmData, OpenCDMSessionCallbacks*, void*, SparkleCDMSession**) final;
 
+    std::vector<std::string> robustnessLevels() final { return { "", "SW_SECURE_DECODE", "SW_SECURE_CRYPTO" }; }
+
 private:
     std::unordered_map<std::string, CKCDMSession*> m_sessions;
     unsigned m_sessionId { 0 };
