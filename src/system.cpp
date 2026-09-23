@@ -84,6 +84,7 @@ OpenCDMSession::~OpenCDMSession()
 
 namespace {
 
+static gboolean s_initialized = FALSE;
 static GList* s_plugins = nullptr;
 static GHashTable* s_modules = nullptr;
 static GHashTable* s_systems = nullptr;
@@ -222,16 +223,26 @@ void unregisterSession(struct OpenCDMSession* session)
 
 } // namespace
 
-extern "C" {
-G_MODULE_EXPORT const gchar* g_module_check_init(GModule* self)
+static void doInitCheck()
 {
-    UNUSED_PARAM(self);
+    if (s_initialized) {
+        return;
+    }
+
     GError* error = nullptr;
     initCheck(&error);
     if (error) {
         g_printerr("Unable to initialize Sparkle-CDM. Error message: %s\n", error->message);
     }
     g_clear_error(&error);
+    s_initialized = TRUE;
+}
+
+extern "C" {
+G_MODULE_EXPORT const gchar* g_module_check_init(GModule* self)
+{
+    UNUSED_PARAM(self);
+    doInitCheck();
     return g_module_error();
 }
 
@@ -251,6 +262,10 @@ typedef OpenCDMError (*DestructSessionFunc)(SparkleCDMSession* session);
 OpenCDMError opencdm_is_type_supported(const char keySystem[],
     const char mimeType[])
 {
+    if (!s_initialized) {
+        doInitCheck();
+    }
+
     GST_DEBUG("is_type_supported: %s -- %s", keySystem, mimeType);
     OpenCDMError result = ERROR_FAIL;
     IsTypeSupportedFunc is_type_supported;
