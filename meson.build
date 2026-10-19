@@ -1,7 +1,7 @@
 project(
   'sparkle-cdm',
   ['c', 'cpp'],
-  version: '2026.2',
+  version: '2026.3',
   meson_version: '>= 0.58',
   default_options: [
     'warning_level=2',
