@@ -8,7 +8,7 @@ sprkl_gst_deps = [ dependency('gstreamer-1.0'),
 
 sprkl_gst_lib = shared_library('gstsprkl', ['decryptor.cpp', 'plugin.cpp', 'sprklcapsmeta.cpp'],
                          dependencies: sprkl_gst_deps,
-                         install_dir: get_option('prefix') / get_option('libdir') / 'gstreamer-1.0',
+                         install_dir: get_option('prefix') / get_option('libdir'),
                          install: true)
 
 install_headers('sprkl/sprklcapsmeta.h', 'sprkl/sprklgst.h', subdir : 'sprkl')
